@@ -40,7 +40,7 @@ app.post('/login', (req, res) => {
     req.session.loggedIn = true;
     return res.json({ success: true });
   }
-  res.json({ success: false, message: 'Invalid AAAA or AAAA' });
+  res.json({ success: false, message: 'Invalid pppp or pppp' });
 });
 
 app.post('/logout', (req, res) => {
