@@ -1,37 +1,15 @@
-const nodemailer = require('nodemailer');
-require('dotenv').config();
-
-async function sendMail({ senderName, gmailId, appPassword, subject, messageBody, to }) {
-  if (!gmailId || !appPassword || !to) {
-    throw new Error('Missing required fields');
-  }
-
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: gmailId, pass: appPassword },
-    tls: { rejectUnauthorized: false }
-  });
-
-  const mailOptions = {
-    from: senderName ? `"${senderName}" <${gmailId}>` : gmailId,
-    to,
-    subject,
-    text: messageBody,
-    headers: {
-      'X-Mailer': 'FastMailer',
-      'X-Priority': '3',
-      'Disposition-Notification-To': gmailId
-    }
-  };
-
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Sent to ${to}: ${info.response}`);
-    return { success: true };
-  } catch (err) {
-    console.error(`❌ Failed to ${to}:`, err.message);
-    return { success: false, message: err.message };
+{
+  "name": "fast-mailer",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "nodemailer": "^6.9.8"
   }
 }
-
-module.exports = { sendMail };
