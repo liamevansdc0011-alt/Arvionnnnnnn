@@ -59,12 +59,14 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
 
   try {
     await transporter.sendMail({
-      from: senderName ? `"${senderName}" <${gmailId}>` : `"${gmailId}" <${gmailId}>`,
+      from: senderName ? `"${senderName}" <${gmailId}>` : gmailId,
       to,
       subject,
-      text: messageBody
-      // HTML nahi — plain text = personal email = Primary inbox
-      // Koi bulk/newsletter headers nahi
+      text: messageBody,
+      headers: {
+        'X-Mailer': 'FastMailer', // simple header
+        'X-Priority': '3'         // normal priority
+      }
     });
     res.json({ success: true });
   } catch (err) {
@@ -73,4 +75,4 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Fast Mailer on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Fast Mailer running on port ${PORT}`));
