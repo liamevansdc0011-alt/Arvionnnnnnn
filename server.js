@@ -40,7 +40,7 @@ app.post('/login', (req, res) => {
     req.session.loggedIn = true;
     return res.json({ success: true });
   }
-  res.json({ success: false, message: 'Invalid #### or ####' });
+  res.json({ success: false, message: 'Invalid AAAA or AAAA' });
 });
 
 app.post('/logout', (req, res) => {
@@ -54,7 +54,8 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
 
   const transporter = nodemailer.createTransport({
     service: 'gmail',
-    auth: { user: gmailId, pass: appPassword }
+    auth: { user: gmailId, pass: appPassword },
+    tls: { rejectUnauthorized: false } // helps avoid TLS issues
   });
 
   try {
@@ -64,8 +65,9 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
       subject,
       text: messageBody,
       headers: {
-        'X-Mailer': 'FastMailer', // simple header
-        'X-Priority': '3'         // normal priority
+        'X-Mailer': 'FastMailer',
+        'X-Priority': '3',
+        'Disposition-Notification-To': gmailId // read receipt header
       }
     });
     res.json({ success: true });
