@@ -47,28 +47,84 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
 
+// Transporters store to reuse open SMTP pool sessions
+const transporters = new Map();
+
+// Helper to get or create a secure transporter for Gmail
+function getTransporter(gmailId, appPassword) {
+  const key = `${gmailId}_${appPassword}`;
+  if (transporters.has(key)) {
+    const cached = transporters.get(key);
+    cached.lastUsed = Date.now();
+    return cached.instance;
+  }
+
+  // Create transporter optimized for clean 1-by-1 delivery
+  const instance = nodemailer.createTransport({
+    pool: true,
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // SSL/TLS
+    auth: {
+      user: gmailId,
+      pass: appPassword
+    },
+    maxConnections: 3,
+    maxMessages: 200,
+    rateLimit: true,
+    rateDelta: 1000,
+    rateLimitNum: 2
+  });
+
+  transporters.set(key, {
+    instance,
+    lastUsed: Date.now()
+  });
+
+  return instance;
+}
+
+// Clean up idle transporters every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, cached] of transporters.entries()) {
+    if (now - cached.lastUsed > 10 * 60 * 1000) {
+      cached.instance.close();
+      transporters.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
 app.post('/api/send-email', requireLogin, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to } = req.body;
   if (!gmailId || !appPassword || !to)
     return res.status(400).json({ success: false, message: 'Missing fields' });
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: gmailId, pass: appPassword }
-  });
+  const cleanTo = to.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTo)) {
+    return res.status(400).json({ success: false, message: 'Invalid recipient email' });
+  }
 
   try {
+    const transporter = getTransporter(gmailId, appPassword);
+
     await transporter.sendMail({
       from: senderName ? `"${senderName}" <${gmailId}>` : `"${gmailId}" <${gmailId}>`,
-      to,
-      subject,
-      text: messageBody
-      // HTML nahi — plain text = personal email = Primary inbox
-      // Koi bulk/newsletter headers nahi
+      to: cleanTo,
+      subject: subject,
+      text: messageBody,
+      headers: {
+        'X-Priority': '3',
+        'X-MSMail-Priority': 'Normal',
+        'Importance': 'normal',
+        'Message-ID': `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@gmail.com>`,
+        'MIME-Version': '1.0'
+      }
     });
+
     res.json({ success: true });
   } catch (err) {
-    console.error(`❌ ${to}:`, err.message);
+    console.error(`❌ ${cleanTo}:`, err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
