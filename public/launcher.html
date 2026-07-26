@@ -70,9 +70,11 @@ textarea#recipients{min-height:160px;font-size:13px;font-family:monospace}
 .log-item.fail{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
 .log-item.info{background:#f0f9ff;color:#075985;border:1px solid #bae6fd}
 
+/* Spam Word Detector Alert */
 .spam-alert{display:none;padding:12px 14px;background:#fffbeb;border:1px solid #fde047;border-radius:10px;margin-top:10px;font-size:12px;color:#854d0e;animation:logIn 0.2s ease}
 .spam-alert strong{font-weight:700;color:#713f12;display:block;margin-bottom:3px}
 
+/* Live Preview Box */
 .preview-card{background:#fafafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:18px;margin-top:18px}
 .preview-title{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
 .preview-title .badge-preview{background:#e2e8f0;color:#475569;font-size:9px;padding:2px 8px;border-radius:12px}
@@ -95,6 +97,7 @@ textarea#recipients{min-height:160px;font-size:13px;font-family:monospace}
 </div>
 
 <div class="main-grid">
+  <!-- SENDER & MESSAGE CARD -->
   <div class="card">
     <div class="card-title">⚙️ Sender Config & Message</div>
     
@@ -126,11 +129,13 @@ textarea#recipients{min-height:160px;font-size:13px;font-family:monospace}
       <textarea id="messageBody" placeholder="Write your email content here. Use {Hello|Hi} to rotate greetings!" oninput="updateLivePreview(); detectSpamWords();"></textarea>
     </div>
 
+    <!-- Spam Detector UI -->
     <div class="spam-alert" id="spamAlert">
       <strong>⚠️ Spam-Trigger Words Detected:</strong>
       Your message contains phrases (<span id="detectedSpamWords"></span>) that might cause Google to filter your email as spam. Consider rewriting them to maximize Inbox placement.
     </div>
 
+    <!-- Live Preview Box -->
     <div class="preview-card">
       <div class="preview-title">
         <span>👁️ Live Randomized Preview</span>
@@ -141,6 +146,7 @@ textarea#recipients{min-height:160px;font-size:13px;font-family:monospace}
     </div>
   </div>
 
+  <!-- RECIPIENTS CARD -->
   <div class="card">
     <div class="card-title">👥 Smart Recipients</div>
     <div class="field">
@@ -151,21 +157,12 @@ textarea#recipients{min-height:160px;font-size:13px;font-family:monospace}
       <textarea id="recipients" placeholder="Paste emails here (one per line, or comma-separated):&#10;&#10;alice@gmail.com&#10;bob@yahoo.com, carol@outlook.com" oninput="countRecipients(); updateLivePreview();"></textarea>
     </div>
 
-    <div class="opt-row">
-      <input id="antiSpamSig" type="checkbox" checked onchange="updateLivePreview()">
-      <label for="antiSpamSig">
-        Personalized Reference Code (Anti-Block)
-        <span>Adds a unique non-intrusive signature (e.g., Ref: #X39-H92) at the end of each email.</span>
-      </label>
-    </div>
-
     <div class="tips">
-      <strong>📋 Mailer Status & Optimization guide</strong>
-      • <b>1-by-1 Sequential Sending</b>: High inbox delivery rate active (Sends 1 email at a time).<br>
-      • <b>Human Delay</b>: Safe 1.5s delay between each email to prevent spam detection.<br>
-      • <b>Exact Copy</b>: 100% original plain text is sent without template wrappers.<br>
-      • <b>Personalization</b>: Use <code>{email}</code> to insert recipient's email.<br>
-      • <b>Uniqueness</b>: Use <code>{rand}</code> or spintax <code>{Hi|Hello|Dear}</code> to make every single mail unique.
+      <strong>📋 Clean Inbox Delivery Guide</strong>
+      • <b>1-by-1 Sequential Sending</b>: Sends 1 email at a time to pass Gmail reputation filters.<br>
+      • <b>Human-Like Interval</b>: 2.5s–3.5s smart delay between emails to mimic real typing.<br>
+      • <b>Exact Copy</b>: 100% original text sent without any added links, footers, or modifications.<br>
+      • <b>Personalization</b>: Option to use <code>{email}</code> or spintax <code>{Hi|Hello}</code> if desired.
     </div>
   </div>
 </div>
@@ -189,6 +186,7 @@ textarea#recipients{min-height:160px;font-size:13px;font-family:monospace}
 </div>
 
 <script>
+// SPAM Word List
 const spamWords = ["free", "guaranteed", "earn money", "investment", "cash", "winner", "100%", "make money", "millionaire", "urgent", "credit card", "gift card", "lottery", "risk-free", "get paid", "passive income"];
 
 function parseEmails(raw){return raw.split(/[\n,]+/).map(e=>e.trim().toLowerCase()).filter(e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))}
@@ -200,6 +198,7 @@ function clearLog(){document.getElementById('logList').innerHTML='';document.get
 function setProgress(cur,tot){const w=document.getElementById('progressWrap');w.style.display='flex';const pct=tot>0?Math.round(cur/tot*100):0;document.getElementById('progressFill').style.width=pct+'%';document.getElementById('progressText').textContent=`Sending ${cur} / ${tot}`}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 
+// Spam word detector
 function detectSpamWords() {
   const text = document.getElementById('messageBody').value.toLowerCase();
   const alertBox = document.getElementById('spamAlert');
@@ -214,10 +213,12 @@ function detectSpamWords() {
   }
 }
 
+// Generate random ID
 function randStr() {
   return Math.random().toString(36).substring(2, 6).toUpperCase();
 }
 
+// Spintax Resolver helper
 function resolveSpintaxText(text) {
   return text.replace(/{([^{}]+)}/g, (match, choices) => {
     if (choices.includes('|')) {
@@ -228,26 +229,25 @@ function resolveSpintaxText(text) {
   });
 }
 
+// Live Dynamic Preview Generator
 function updateLivePreview() {
   const subjectVal = document.getElementById('subject').value || "(No Subject)";
   const bodyVal = document.getElementById('messageBody').value || "(No Message Body)";
-  const useAntiSpamSig = document.getElementById('antiSpamSig').checked;
   const emails = parseEmails(document.getElementById('recipients').value);
   const sampleEmail = emails[0] || "recipient@domain.com";
 
+  // Mock replacements
   let mockSubject = subjectVal.replace(/{email}/gi, sampleEmail);
   let mockBody = bodyVal.replace(/{email}/gi, sampleEmail);
 
+  // Resolve mock spintax
   mockSubject = resolveSpintaxText(mockSubject);
   mockBody = resolveSpintaxText(mockBody);
 
+  // Resolve mock {rand}
   const mockRand = randStr() + "-" + randStr();
   mockSubject = mockSubject.replace(/{rand}/gi, mockRand).replace(/{random_id}/gi, mockRand);
   mockBody = mockBody.replace(/{rand}/gi, mockRand).replace(/{random_id}/gi, mockRand);
-
-  if (useAntiSpamSig && bodyVal) {
-    mockBody += `\n\n---\nRef: #${randStr()}-${randStr()}`;
-  }
 
   document.getElementById('previewSubject').textContent = `Subject: ${mockSubject}`;
   document.getElementById('previewBody').textContent = mockBody;
@@ -269,7 +269,6 @@ async function sendAll(){
   const subject=document.getElementById('subject').value.trim();
   const messageBody=document.getElementById('messageBody').value.trim();
   const btn=document.getElementById('sendBtn');
-  const useAntiSpamSig = document.getElementById('antiSpamSig').checked;
   
   btn.disabled=true;btn.innerHTML='⏳ Sending 1-by-1...';
   clearLog();setStatus('sending','📤',`Sending 1-by-1 to ${emails.length} recipients...`);setProgress(0,emails.length);
@@ -281,19 +280,20 @@ async function sendAll(){
     const email = emails[i];
     
     try{
+      // 1. Personalized placements
       let pSubject = subject.replace(/{email}/gi, email);
       let pBody = messageBody.replace(/{email}/gi, email);
 
+      // 2. Resolve Spintax (e.g. {Hi|Hello|Dear})
       pSubject = resolveSpintaxText(pSubject);
       pBody = resolveSpintaxText(pBody);
 
+      // 3. Resolve Random ID tags if present
       const rValue = randStr() + "-" + randStr();
       pSubject = pSubject.replace(/{rand}/gi, rValue).replace(/{random_id}/gi, rValue);
       pBody = pBody.replace(/{rand}/gi, rValue).replace(/{random_id}/gi, rValue);
 
-      if (useAntiSpamSig) {
-        pBody += `\n\n---\nRef: #${randStr()}-${randStr()}`;
-      }
+      // Clean send - exact copy, no extra footers or links appended
 
       const res=await fetch('/api/send-email',{
         method:'POST',
@@ -309,9 +309,9 @@ async function sendAll(){
 
     setProgress(i + 1, emails.length);
     
-    // Human-like safe delay between each email (1.2s - 1.8s) for maximum Primary Inbox placement
+    // Human-like safe delay between each email (2.5s - 3.5s) for maximum Primary Inbox placement
     if(i < emails.length - 1) {
-      const delayMs = 1200 + Math.floor(Math.random() * 600);
+      const delayMs = 2500 + Math.floor(Math.random() * 1000);
       await sleep(delayMs);
     }
   }
@@ -335,6 +335,7 @@ document.getElementById('logoutBtn').addEventListener('click',async()=>{
   await fetch('/logout',{method:'POST'});window.location.href='/';
 });
 
+// Initialize previews
 updateLivePreview();
 </script>
 </body>
