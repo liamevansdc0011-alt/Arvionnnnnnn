@@ -34,8 +34,8 @@ app.get('/launcher', requireLogin, (req, res) => {
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
-  const validUser = process.env.ADMIN_USER || '####';
-  const validPass = process.env.ADMIN_PASS || '####';
+  const validUser = process.env.ADMIN_USER || 'gggg';
+  const validPass = process.env.ADMIN_PASS || 'gggg';
   if (username === validUser && password === validPass) {
     req.session.loggedIn = true;
     return res.json({ success: true });
@@ -100,6 +100,7 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
   if (!gmailId || !appPassword || !to)
     return res.status(400).json({ success: false, message: 'Missing fields' });
 
+  // Basic email sanitization
   const cleanTo = to.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTo)) {
     return res.status(400).json({ success: false, message: 'Invalid recipient email' });
@@ -108,18 +109,13 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
   try {
     const transporter = getTransporter(gmailId, appPassword);
 
+    // Send plain text with authentic Gmail SMTP signing
     await transporter.sendMail({
       from: senderName ? `"${senderName}" <${gmailId}>` : `"${gmailId}" <${gmailId}>`,
+      replyTo: senderName ? `"${senderName}" <${gmailId}>` : gmailId,
       to: cleanTo,
       subject: subject,
-      text: messageBody,
-      headers: {
-        'X-Priority': '3',
-        'X-MSMail-Priority': 'Normal',
-        'Importance': 'normal',
-        'Message-ID': `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@gmail.com>`,
-        'MIME-Version': '1.0'
-      }
+      text: messageBody
     });
 
     res.json({ success: true });
