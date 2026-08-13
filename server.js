@@ -8,38 +8,38 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Body parsing
+// Body Parsers (Form submission aur JSON dono support karne ke liye)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 1. Session Security
+// Session Setup
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'fallback-secure-random-string-change-this',
+  secret: process.env.SESSION_SECRET || 'fast-mailer-default-secret',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    httpOnly: true, // Prevents XSS script access to session cookie
-    secure: process.env.NODE_ENV === 'production', // Use HTTPS in production
+    httpOnly: true,
+    secure: false, // Local testing ke liye false, HTTPS production me true karein
     maxAge: 1000 * 60 * 60 * 8 // 8 hours
   }
 }));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 2. Anti-Spam / Rate Limiting (Prevent Brute-Force & Abuse)
+// Rate Limiters
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Max 5 login attempts per IP
-  message: { success: false, message: 'Too many login attempts. Try again later.' }
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many attempts. Try again later.' }
 });
 
 const mailLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // Max 10 emails per minute to prevent Gmail rate-limit ban
-  message: { success: false, message: 'Rate limit exceeded. Slow down sending emails.' }
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Rate limit exceeded. Please wait.' }
 });
 
-// Middleware for Login Check
+// Middleware
 function requireLogin(req, res, next) {
   if (req.session?.loggedIn) return next();
   res.redirect('/');
@@ -55,36 +55,33 @@ app.get('/launcher', requireLogin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Secure Login Route
+// Fixed Login Route with Hardcoded Fallback Credentials
 app.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
-  const adminUser = process.env.ADMIN_USER;
-  const adminPass = process.env.ADMIN_PASS;
 
-  if (!adminUser || !adminPass) {
-    return res.status(500).json({ success: false, message: 'Server configuration error.' });
-  }
+  // Pehle .env se check karega, agar nahi milega toh fallback values ('admin' / '123456') use karega
+  const validUser = process.env.ADMIN_USER || 'HHHH';
+  const validPass = process.env.ADMIN_PASS || 'HHHH';
 
-  if (username === adminUser && password === adminPass) {
+  if (username === validUser && password === validPass) {
     req.session.loggedIn = true;
-    return res.json({ success: true });
+    return res.json({ success: true, message: 'Login successful' });
   }
 
-  res.status(401).json({ success: false, message: 'Invalid radhe or kkkk' });
+  return res.status(401).json({ success: false, message: 'Invalid username or password' });
 });
 
 app.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
 
-// Helper: Basic Email Validator
+// Helper Function
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-// Secure Email Sending Endpoint
+// Email Route
 app.post('/api/send-email', requireLogin, mailLimiter, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to } = req.body;
 
-  // Use body credentials OR fallback to server .env credentials
   const mailUser = gmailId || process.env.GMAIL_USER;
   const mailPass = appPassword || process.env.GMAIL_APP_PASS;
 
@@ -96,16 +93,13 @@ app.post('/api/send-email', requireLogin, mailLimiter, async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid email address format' });
   }
 
-  // Reusable Transporter
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: mailUser, pass: mailPass }
   });
 
   try {
-    const fromHeader = senderName 
-      ? `"${senderName.replace(/"/g, '')}" <${mailUser}>` 
-      : mailUser;
+    const fromHeader = senderName ? `"${senderName.replace(/"/g, '')}" <${mailUser}>` : mailUser;
 
     await transporter.sendMail({
       from: fromHeader,
@@ -114,11 +108,11 @@ app.post('/api/send-email', requireLogin, mailLimiter, async (req, res) => {
       text: messageBody
     });
 
-    res.json({ success: true });
+    res.json({ success: true, message: 'Email sent successfully!' });
   } catch (err) {
-    console.error(`❌ Email send failed [${to}]:`, err.message);
-    res.status(500).json({ success: false, message: 'Failed to send email. Check credentials or receiver address.' });
+    console.error(`❌ Mail error [${to}]:`, err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Fast Mailer running safely on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Fast Mailer running on http://localhost:${PORT}`));
