@@ -59,7 +59,7 @@ app.get('/launcher', requireLogin, (req, res) => {
 app.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
 
-  // Pehle .env se check karega, agar nahi milega toh fallback values ('admin' / '123456') use karega
+  // Pehle .env se check karega, agar nahi milega toh fallback values ('HHHH' / 'HHHH') use karega
   const validUser = process.env.ADMIN_USER || 'HHHH';
   const validPass = process.env.ADMIN_PASS || 'HHHH';
 
