@@ -8,19 +8,19 @@ require('dotenv').config();
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust proxy for Render environment (Fixes session loss)
+// Render behind reverse proxy fix for session cookies
 app.set('trust proxy', 1);
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2026',
+  secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2024',
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 1000 * 60 * 60 * 8
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production', // Production me secure SSL cookies
+    maxAge: 1000 * 60 * 60 * 8 
   }
 }));
 
@@ -31,7 +31,6 @@ function requireLogin(req, res, next) {
   res.redirect('/');
 }
 
-// Routes
 app.get('/', (req, res) => {
   if (req.session?.loggedIn) return res.redirect('/launcher');
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -56,111 +55,88 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
 
-// =========================================================================
-// 🚀 SMART SEQUENTIAL QUEUE ENGINE (1 MAIL PER 1 SECOND STRICT)
-// =========================================================================
-
+// Transporters store to reuse open SMTP pool sessions
 const transporters = new Map();
 
-// Optimized Transporter Cache
+// Helper to get or create a secure transporter for Gmail
 function getTransporter(gmailId, appPassword) {
   const key = `${gmailId}_${appPassword}`;
-  if (transporters.has(key)) return transporters.get(key);
+  if (transporters.has(key)) {
+    const cached = transporters.get(key);
+    cached.lastUsed = Date.now();
+    return cached.instance;
+  }
 
+  // Create transporter optimized for clean 1-by-1 delivery
   const instance = nodemailer.createTransport({
-    service: 'gmail',
+    pool: true,
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // SSL/TLS
     auth: {
       user: gmailId,
       pass: appPassword
-    }
+    },
+    maxConnections: 3,
+    maxMessages: 200,
+    rateLimit: true,
+    rateDelta: 1000,
+    rateLimitNum: 2
   });
 
-  transporters.set(key, instance);
+  transporters.set(key, {
+    instance,
+    lastUsed: Date.now()
+  });
+
   return instance;
 }
 
-// In-Memory Queue Store
-const emailQueue = [];
-let isProcessing = false;
-
-// Background Queue Processor (Ensures 1 Mail / 1 Second Sequence)
-async function processQueue() {
-  if (isProcessing || emailQueue.length === 0) return;
-  isProcessing = true;
-
-  while (emailQueue.length > 0) {
-    const job = emailQueue.shift(); // Get next email from line
-
-    try {
-      const transporter = getTransporter(job.gmailId, job.appPassword);
-
-      const fromHeader = job.senderName 
-        ? `"${job.senderName.replace(/"/g, '')}" <${job.gmailId}>` 
-        : job.gmailId;
-
-      // Clean Mail with Dual Plain Text + Clean Styled HTML (Natural Gmail Signing)
-      await transporter.sendMail({
-        from: fromHeader,
-        replyTo: fromHeader,
-        to: job.to,
-        subject: job.subject || '',
-        text: job.messageBody,
-        html: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #111111; line-height: 1.6;">
-                ${(job.messageBody || '').replace(/\n/g, '<br/>')}
-               </div>`
-      });
-
-      console.log(`✅ [Inbox Sent] -> ${job.to}`);
-    } catch (err) {
-      console.error(`❌ [Failed] -> ${job.to}:`, err.message);
+// Clean up idle transporters every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, cached] of transporters.entries()) {
+    if (now - cached.lastUsed > 10 * 60 * 1000) {
+      cached.instance.close();
+      transporters.delete(key);
     }
-
-    // ⏱️ STRICT 1-SECOND PAUSE BETWEEN EACH EMAIL (Prevents Spam Blocking)
-    await new Promise(resolve => setTimeout(resolve, 1000));
   }
+}, 5 * 60 * 1000);
 
-  isProcessing = false;
-}
-
-// Mail API Endpoint
-app.post('/api/send-email', requireLogin, (req, res) => {
+// API Route: Directly sends mail to Client's Email ID
+app.post('/api/send-email', requireLogin, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to, clientEmail, recipient } = req.body;
-  const targetEmail = to || clientEmail || recipient;
+  
+  // Client ID fallback check (accepts 'to', 'clientEmail', or 'recipient')
+  const clientTargetEmail = to || clientEmail || recipient;
 
-  if (!gmailId || !appPassword || !targetEmail) {
-    return res.status(400).json({ success: false, message: 'Missing required parameters' });
+  if (!gmailId || !appPassword || !clientTargetEmail) {
+    return res.status(400).json({ success: false, message: 'Missing required email fields (Gmail ID, App Password, or Client Email)' });
   }
 
-  const cleanTo = targetEmail.trim().toLowerCase();
+  // Basic email sanitization
+  const cleanTo = clientTargetEmail.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTo)) {
-    return res.status(400).json({ success: false, message: 'Invalid recipient email' });
+    return res.status(400).json({ success: false, message: 'Invalid client recipient email address' });
   }
 
-  // Push job into sequence queue
-  emailQueue.push({
-    senderName,
-    gmailId,
-    appPassword,
-    subject,
-    messageBody: messageBody || '',
-    to: cleanTo
-  });
+  try {
+    const transporter = getTransporter(gmailId, appPassword);
 
-  // Start background queue processing safely
-  processQueue();
+    // Send email directly to client ID while maintaining original SMTP flow
+    await transporter.sendMail({
+      from: senderName ? `"${senderName}" <${gmailId}>` : `"${gmailId}" <${gmailId}>`,
+      replyTo: senderName ? `"${senderName}" <${gmailId}>` : gmailId,
+      to: cleanTo, // Client's email address
+      subject: subject,
+      text: messageBody
+    });
 
-  res.json({
-    success: true,
-    message: `Mail added to queue successfully. Waiting line: ${emailQueue.length}`
-  });
+    res.json({ success: true, message: `Email sent successfully to ${cleanTo}` });
+  } catch (err) {
+    console.error(`❌ ${cleanTo}:`, err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
-// Check remaining queue count API
-app.get('/api/queue-status', requireLogin, (req, res) => {
-  res.json({
-    pendingEmails: emailQueue.length,
-    isProcessing: isProcessing
-  });
-});
-
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Queue Mailer Engine Active on Port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Fast Mailer running on port ${PORT}`));
