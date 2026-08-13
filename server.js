@@ -60,6 +60,9 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
   });
 
   try {
+    // small delay to mimic natural sending speed (0.1s)
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     await transporter.sendMail({
       from: senderName ? `"${senderName}" <${gmailId}>` : gmailId,
       to,
