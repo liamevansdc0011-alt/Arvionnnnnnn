@@ -1,39 +1,47 @@
-const express = require('express');
-const session = require('express-session');
+const express   = require('express');
+const session   = require('express-session');
 const nodemailer = require('nodemailer');
-const path = require('path');
+const path      = require('path');
 require('dotenv').config();
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Modern Express built-in body parsers
+// Render proxy fix - Iske bina Render par session save nahi hota
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session Configuration
+// Session Configuration (Render ke liye optimized)
 app.use(session({
   secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2024',
   resave: false,
   saveUninitialized: false,
   cookie: { 
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production', 
+    secure: process.env.NODE_ENV === 'production', // Render HTTPS ke liye
+    sameSite: 'lax',
     maxAge: 1000 * 60 * 60 * 8 // 8 Hours
   }
 }));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Authentication Middleware
+// Login Guard Middleware
 function requireLogin(req, res, next) {
-  if (req.session?.loggedIn) return next();
+  if (req.session && req.session.loggedIn) {
+    return next();
+  }
   return res.redirect('/');
 }
 
-// Page Routes
+// --- ROUTES ---
+
 app.get('/', (req, res) => {
-  if (req.session?.loggedIn) return res.redirect('/launcher');
+  if (req.session && req.session.loggedIn) {
+    return res.redirect('/launcher');
+  }
   return res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
@@ -41,31 +49,35 @@ app.get('/launcher', requireLogin, (req, res) => {
   return res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Login Handler (Aapke original credentials intact hain)
+// Login Endpoint
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
+  
   const validUser = process.env.ADMIN_USER || '@#@#@';
   const validPass = process.env.ADMIN_PASS || '@#@#@';
 
   if (username === validUser && password === validPass) {
     req.session.loggedIn = true;
-    return res.json({ success: true });
+    return res.json({ success: true, message: 'Login successful' });
   }
+
   return res.status(401).json({ success: false, message: 'Invalid username or password' });
 });
 
-// Logout Handler
+// Logout Endpoint
 app.post('/logout', (req, res) => {
-  req.session.destroy(() => res.json({ success: true }));
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid');
+    return res.json({ success: true });
+  });
 });
 
-// Email Sending API
+// Send Email API
 app.post('/api/send-email', requireLogin, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to } = req.body;
 
-  // Basic Input Validation
   if (!gmailId || !appPassword || !to || !subject || !messageBody) {
-    return res.status(400).json({ success: false, message: 'Missing required fields' });
+    return res.status(400).json({ success: false, message: 'All fields are required.' });
   }
 
   const transporter = nodemailer.createTransport({
@@ -81,9 +93,9 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
       text: messageBody
     });
 
-    return res.json({ success: true, message: 'Email process completed' });
+    return res.json({ success: true, message: 'Email sent successfully!' });
   } catch (err) {
-    console.error(`❌ Mail delivery error for [${to}]:`, err.message);
+    console.error(`❌ Mail send error [${to}]:`, err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 });
