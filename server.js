@@ -63,23 +63,4 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
   });
 
   try {
-    // small delay to mimic natural sending speed (0.1s)
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    await transporter.sendMail({
-      from: senderName ? `"${senderName}" <${gmailId}>` : gmailId,
-      to,
-      subject,
-      text: messageBody,
-      headers: {
-        'X-Mailer': 'FastMailer'
-      }
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error(`❌ ${to}:`, err.message);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.listen(PORT, () => console.log(`🚀 Fast Mailer running on port ${PORT}`));
+    // small
