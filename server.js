@@ -1,112 +1,124 @@
 const express = require('express');
 const session = require('express-session');
 const nodemailer = require('nodemailer');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Modern Express built-in body parsing (body-parser package ki zaroorat nahi)
+// Body parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session Configuration (Secured cookies & HTTP Only)
+// 1. Session Security
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2024',
+  secret: process.env.SESSION_SECRET || 'fallback-secure-random-string-change-this',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true, // Prevents XSS script access to session cookie
+    secure: process.env.NODE_ENV === 'production', // Use HTTPS in production
     maxAge: 1000 * 60 * 60 * 8 // 8 hours
   }
 }));
 
-// Static folder serve karne ke liye
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Authentication Middleware
+// 2. Anti-Spam / Rate Limiting (Prevent Brute-Force & Abuse)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Max 5 login attempts per IP
+  message: { success: false, message: 'Too many login attempts. Try again later.' }
+});
+
+const mailLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // Max 10 emails per minute to prevent Gmail rate-limit ban
+  message: { success: false, message: 'Rate limit exceeded. Slow down sending emails.' }
+});
+
+// Middleware for Login Check
 function requireLogin(req, res, next) {
   if (req.session?.loggedIn) return next();
-  return res.redirect('/');
+  res.redirect('/');
 }
 
-// --- ROUTES ---
-
-// Login / Launcher Views
+// Routes
 app.get('/', (req, res) => {
   if (req.session?.loggedIn) return res.redirect('/launcher');
-  return res.sendFile(path.join(__dirname, 'public', 'login.html'));
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 app.get('/launcher', requireLogin, (req, res) => {
-  return res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
+  res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Login Handler
-app.post('/login', (req, res) => {
+// Secure Login Route
+app.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
-  
-  // Environment variables ya fallback values
-  const validUser = process.env.ADMIN_USER || '@#@#@';
-  const validPass = process.env.ADMIN_PASS || '@#@#@';
+  const adminUser = process.env.ADMIN_USER;
+  const adminPass = process.env.ADMIN_PASS;
 
-  if (username === validUser && password === validPass) {
+  if (!adminUser || !adminPass) {
+    return res.status(500).json({ success: false, message: 'Server configuration error.' });
+  }
+
+  if (username === adminUser && password === adminPass) {
     req.session.loggedIn = true;
     return res.json({ success: true });
   }
 
-  return res.status(401).json({ success: false, message: 'Invalid username or password' });
+  res.status(401).json({ success: false, message: 'Invalid username or password' });
 });
 
-// Logout Handler
 app.post('/logout', (req, res) => {
-  req.session.destroy((err) => {
-    if (err) return res.status(500).json({ success: false, message: 'Logout failed' });
-    res.clearCookie('connect.sid');
-    return res.json({ success: true });
-  });
+  req.session.destroy(() => res.json({ success: true }));
 });
 
-// Send Email API
-app.post('/api/send-email', requireLogin, async (req, res) => {
+// Helper: Basic Email Validator
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+// Secure Email Sending Endpoint
+app.post('/api/send-email', requireLogin, mailLimiter, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to } = req.body;
 
-  // Strict validation for required fields
-  if (!gmailId || !appPassword || !to || !subject || !messageBody) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'All fields (gmailId, appPassword, to, subject, messageBody) are required.' 
-    });
+  // Use body credentials OR fallback to server .env credentials
+  const mailUser = gmailId || process.env.GMAIL_USER;
+  const mailPass = appPassword || process.env.GMAIL_APP_PASS;
+
+  if (!mailUser || !mailPass || !to || !messageBody) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
+  if (!isValidEmail(to) || !isValidEmail(mailUser)) {
+    return res.status(400).json({ success: false, message: 'Invalid email address format' });
+  }
+
+  // Reusable Transporter
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: mailUser, pass: mailPass }
+  });
+
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: gmailId,
-        pass: appPassword
-      }
-    });
+    const fromHeader = senderName 
+      ? `"${senderName.replace(/"/g, '')}" <${mailUser}>` 
+      : mailUser;
 
-    const mailOptions = {
-      from: senderName ? `"${senderName}" <${gmailId}>` : gmailId,
-      to: to,
-      subject: subject,
+    await transporter.sendMail({
+      from: fromHeader,
+      to,
+      subject: subject || '(No Subject)',
       text: messageBody
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-    return res.json({ success: true, messageId: info.messageId });
-
-  } catch (err) {
-    console.error(`❌ Mail send error [Recipient: ${to}]:`, err.message);
-    return res.status(500).json({ 
-      success: false, 
-      message: err.message || 'Failed to send email' 
     });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(`❌ Email send failed [${to}]:`, err.message);
+    res.status(500).json({ success: false, message: 'Failed to send email. Check credentials or receiver address.' });
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Fast Mailer running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Fast Mailer running safely on port ${PORT}`));
