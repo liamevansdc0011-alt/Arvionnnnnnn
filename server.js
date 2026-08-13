@@ -7,18 +7,19 @@ require('dotenv').config();
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Render proxy settings (Session redirection fix ke liye mandatory)
+// 1. Render / Proxy Fix (Session drop problem solve karne ke liye)
 app.set('trust proxy', 1);
 
+// 2. In-built Express body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session Setup
+// 3. Secure Session Setup
 app.use(session({
   secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2024',
   resave: false,
   saveUninitialized: false,
-  cookie: {
+  cookie: { 
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -28,7 +29,7 @@ app.use(session({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Authentication Middleware
+// Authentication Guard
 function requireLogin(req, res, next) {
   if (req.session?.loggedIn) return next();
   return res.redirect('/');
@@ -58,43 +59,52 @@ app.post('/login', (req, res) => {
 });
 
 app.post('/logout', (req, res) => {
-  req.session.destroy(() => res.json({ success: true }));
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid');
+    return res.json({ success: true });
+  });
 });
 
 // Email API Route
 app.post('/api/send-email', requireLogin, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to } = req.body;
 
+  // Complete Input Validation
   if (!gmailId || !appPassword || !to || !subject || !messageBody) {
-    return res.status(400).json({ success: false, message: 'All fields are required' });
+    return res.status(400).json({ 
+      success: false, 
+      message: 'All fields (gmailId, appPassword, to, subject, messageBody) are required.' 
+    });
   }
 
-  // App Password se spaces automatic remove karna taaki format error na aaye
+  // Sanitization: App password aur email ke spaces auto-remove karna
   const cleanAppPassword = appPassword.replace(/\s+/g, '');
   const cleanGmailId = gmailId.trim();
+  const cleanTo = to.trim();
 
   const transporter = nodemailer.createTransport({
     service: 'gmail',
-    auth: {
-      user: cleanGmailId,
-      pass: cleanAppPassword
+    auth: { 
+      user: cleanGmailId, 
+      pass: cleanAppPassword 
     }
   });
 
   try {
     const info = await transporter.sendMail({
-      from: senderName ? `"${senderName}" <${cleanGmailId}>` : cleanGmailId,
-      to: to.trim(),
-      subject: subject,
+      from: senderName ? `"${senderName.trim()}" <${cleanGmailId}>` : cleanGmailId,
+      to: cleanTo,
+      subject: subject.trim(),
       text: messageBody
     });
 
     return res.json({ success: true, messageId: info.messageId });
+
   } catch (err) {
-    console.error(`❌ Mail send error [${to}]:`, err.message);
+    console.error(`❌ Mail delivery error for [${cleanTo}]:`, err.message);
     return res.status(500).json({ 
       success: false, 
-      message: err.message || 'SMTP Authentication failed' 
+      message: err.message || 'Failed to send email. Check Gmail & App Password.' 
     });
   }
 });
