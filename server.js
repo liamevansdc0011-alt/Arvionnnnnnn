@@ -56,7 +56,10 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
     host: 'smtp.gmail.com',
     port: 465,
     secure: true, // SSL
-    auth: { user: gmailId, pass: appPassword }
+    auth: {
+      user: gmailId.trim(),
+      pass: appPassword.trim()
+    }
   });
 
   try {
