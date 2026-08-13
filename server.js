@@ -8,7 +8,7 @@ require('dotenv').config();
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust proxy for Render environment
+// Render reverse proxy fix (Fixes session cookie drop)
 app.set('trust proxy', 1);
 
 app.use(bodyParser.json());
@@ -58,7 +58,7 @@ app.post('/logout', (req, res) => {
 // Transporters store to reuse open SMTP pool sessions
 const transporters = new Map();
 
-// Helper to get or create a secure transporter for Gmail
+// Helper to get or create a secure transporter for Gmail (Port 465 SSL)
 function getTransporter(gmailId, appPassword) {
   const key = `${gmailId}_${appPassword}`;
   if (transporters.has(key)) {
@@ -67,21 +67,17 @@ function getTransporter(gmailId, appPassword) {
     return cached.instance;
   }
 
-  // Optimized SMTP pool for human-like steady delivery
   const instance = nodemailer.createTransport({
     pool: true,
     host: 'smtp.gmail.com',
     port: 465,
-    secure: true, // SSL/TLS
+    secure: true, // SSL/TLS required for Render
     auth: {
       user: gmailId,
       pass: appPassword
     },
-    maxConnections: 1,      // Single connection to avoid aggressive Gmail spam triggers
-    maxMessages: 100,
-    rateLimit: true,
-    rateDelta: 1100,         // 1.1 Seconds rate limit window
-    rateLimitNum: 1          // Strictly 1 mail per 1.1 seconds
+    maxConnections: 3,
+    maxMessages: 200
   });
 
   transporters.set(key, {
@@ -103,65 +99,105 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// Helper function for 1.1-second delay
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Helper Delay Function
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Helper to convert raw text into clean HTML paragraphs
+// Helper: Convert raw text to HTML (Spam prevention technique)
 function formatToHTML(text) {
   if (!text) return '';
-  const escaped = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  return escaped.split('\n').map(line => line.trim() ? `<p style="margin: 0 0 10px 0; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333333;">${line}</p>` : '<br/>').join('');
+  return text
+    .split('\n')
+    .map(line => line.trim() ? `<p style="margin:0 0 8px 0; font-family:Arial,sans-serif; color:#222; font-size:14px; line-height:1.5;">${line}</p>` : '<br/>')
+    .join('');
 }
 
-// Send Mail Route
+// =========================================================================
+// 🚀 BATCH EMAIL ROUTE (6-7 Mails per Batch | 25 Mails in ~24 Seconds)
+// =========================================================================
 app.post('/api/send-email', requireLogin, async (req, res) => {
-  const { senderName, gmailId, appPassword, subject, messageBody, to, clientEmail, recipient } = req.body;
-  const clientTargetEmail = to || clientEmail || recipient;
-
-  if (!gmailId || !appPassword || !clientTargetEmail) {
-    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  const { senderName, gmailId, appPassword, subject, messageBody, to, clientEmail, recipient, batch } = req.body;
+  
+  if (!gmailId || !appPassword) {
+    return res.status(400).json({ success: false, message: 'Missing Gmail credentials' });
   }
 
-  // Basic email sanitization
-  const cleanTo = clientTargetEmail.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTo)) {
-    return res.status(400).json({ success: false, message: 'Invalid recipient email' });
+  // 1. Agar request mein multiple emails ka array (batch) aaye:
+  let emailList = [];
+  if (Array.isArray(batch) && batch.length > 0) {
+    emailList = batch;
+  } else {
+    // Single email fallback
+    const target = to || clientEmail || recipient;
+    if (target) emailList.push(target);
+  }
+
+  if (emailList.length === 0) {
+    return res.status(400).json({ success: false, message: 'No recipient email addresses provided' });
   }
 
   try {
     const transporter = getTransporter(gmailId, appPassword);
+    const BATCH_SIZE = 6;            // 6 to 7 emails per batch
+    const IN_BATCH_DELAY = 200;       // 200ms gap inside batch
+    const INTER_BATCH_DELAY = 4500;   // 4.5 seconds pause between batches
 
-    // Exact 1.1 Second delay execution before sending
-    await sleep(1100);
-
+    const results = [];
     const fromAddress = senderName 
       ? `"${senderName.replace(/"/g, '')}" <${gmailId}>` 
       : `"${gmailId}" <${gmailId}>`;
 
     const htmlBody = formatToHTML(messageBody);
 
-    // Send Mail with Anti-Spam Headers & Dual Format (HTML + Plain Text)
-    await transporter.sendMail({
-      from: fromAddress,
-      replyTo: fromAddress,
-      to: cleanTo,
-      subject: subject || '',
-      text: messageBody,        // Plain text fallback
-      html: htmlBody,           // HTML format (prevents spam flagging)
-      headers: {
-        'X-Mailer': 'GmailApp-Mailer',
-        'X-Priority': '3 (Normal)',
-        'Message-ID': `<${Date.now()}.${Math.random().toString(36).substring(2, 9)}@gmail.com>`
+    // Loop through email list in batches of 6-7
+    for (let i = 0; i < emailList.length; i += BATCH_SIZE) {
+      const currentBatch = emailList.slice(i, i + BATCH_SIZE);
+
+      // Process items inside current batch
+      for (const rawTo of currentBatch) {
+        const cleanTo = rawTo.trim().toLowerCase();
+        
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTo)) {
+          results.push({ email: cleanTo, status: 'failed', error: 'Invalid Email Format' });
+          continue;
+        }
+
+        try {
+          await transporter.sendMail({
+            from: fromAddress,
+            replyTo: fromAddress,
+            to: cleanTo,
+            subject: subject || '',
+            text: messageBody,        // Plain text fallback
+            html: htmlBody           // Clean HTML (prevents spam flagging)
+          });
+
+          console.log(`✅ [Batch Delivery] -> ${cleanTo}`);
+          results.push({ email: cleanTo, status: 'sent' });
+        } catch (err) {
+          console.error(`❌ [Batch Failed] -> ${cleanTo}:`, err.message);
+          results.push({ email: cleanTo, status: 'failed', error: err.message });
+        }
+
+        // Micro delay inside batch (200ms)
+        await sleep(IN_BATCH_DELAY);
       }
+
+      // Inter-batch pause (4.5s) if more emails remain
+      if (i + BATCH_SIZE < emailList.length) {
+        console.log(`⏳ Batch pause for ${INTER_BATCH_DELAY}ms to prevent Gmail Spam Detection...`);
+        await sleep(INTER_BATCH_DELAY);
+      }
+    }
+
+    return res.json({
+      success: true,
+      totalSent: results.filter(r => r.status === 'sent').length,
+      details: results
     });
 
-    res.json({ success: true, message: `Email sent to ${cleanTo} with 1.1s speed control.` });
   } catch (err) {
-    console.error(`❌ ${cleanTo}:`, err.message);
-    res.status(500).json({ success: false, message: err.message });
+    console.error(`❌ Batch system error:`, err.message);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 
