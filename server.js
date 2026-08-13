@@ -8,14 +8,14 @@ require('dotenv').config();
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust proxy for Render environment
+// Trust proxy for Render environment (Fixes session loss)
 app.set('trust proxy', 1);
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2024',
+  secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2026',
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -31,6 +31,7 @@ function requireLogin(req, res, next) {
   res.redirect('/');
 }
 
+// Routes
 app.get('/', (req, res) => {
   if (req.session?.loggedIn) return res.redirect('/launcher');
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -55,114 +56,111 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
 
-// Transporters store to reuse open SMTP pool sessions
+// =========================================================================
+// 🚀 SMART SEQUENTIAL QUEUE ENGINE (1 MAIL PER 1 SECOND STRICT)
+// =========================================================================
+
 const transporters = new Map();
 
-// Helper to get or create a secure transporter for Gmail
+// Optimized Transporter Cache
 function getTransporter(gmailId, appPassword) {
   const key = `${gmailId}_${appPassword}`;
-  if (transporters.has(key)) {
-    const cached = transporters.get(key);
-    cached.lastUsed = Date.now();
-    return cached.instance;
-  }
+  if (transporters.has(key)) return transporters.get(key);
 
-  // Optimized SMTP pool for human-like steady delivery
   const instance = nodemailer.createTransport({
-    pool: true,
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // SSL/TLS
+    service: 'gmail',
     auth: {
       user: gmailId,
       pass: appPassword
-    },
-    maxConnections: 1,      // Single connection to avoid aggressive Gmail spam triggers
-    maxMessages: 100,
-    rateLimit: true,
-    rateDelta: 1100,         // 1.1 Seconds rate limit window
-    rateLimitNum: 1          // Strictly 1 mail per 1.1 seconds
+    }
   });
 
-  transporters.set(key, {
-    instance,
-    lastUsed: Date.now()
-  });
-
+  transporters.set(key, instance);
   return instance;
 }
 
-// Clean up idle transporters every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, cached] of transporters.entries()) {
-    if (now - cached.lastUsed > 10 * 60 * 1000) {
-      cached.instance.close();
-      transporters.delete(key);
+// In-Memory Queue Store
+const emailQueue = [];
+let isProcessing = false;
+
+// Background Queue Processor (Ensures 1 Mail / 1 Second Sequence)
+async function processQueue() {
+  if (isProcessing || emailQueue.length === 0) return;
+  isProcessing = true;
+
+  while (emailQueue.length > 0) {
+    const job = emailQueue.shift(); // Get next email from line
+
+    try {
+      const transporter = getTransporter(job.gmailId, job.appPassword);
+
+      const fromHeader = job.senderName 
+        ? `"${job.senderName.replace(/"/g, '')}" <${job.gmailId}>` 
+        : job.gmailId;
+
+      // Clean Mail with Dual Plain Text + Clean Styled HTML (Natural Gmail Signing)
+      await transporter.sendMail({
+        from: fromHeader,
+        replyTo: fromHeader,
+        to: job.to,
+        subject: job.subject || '',
+        text: job.messageBody,
+        html: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #111111; line-height: 1.6;">
+                ${(job.messageBody || '').replace(/\n/g, '<br/>')}
+               </div>`
+      });
+
+      console.log(`✅ [Inbox Sent] -> ${job.to}`);
+    } catch (err) {
+      console.error(`❌ [Failed] -> ${job.to}:`, err.message);
     }
+
+    // ⏱️ STRICT 1-SECOND PAUSE BETWEEN EACH EMAIL (Prevents Spam Blocking)
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
-}, 5 * 60 * 1000);
 
-// Helper function for 1.1-second delay
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Helper to convert raw text into clean HTML paragraphs
-function formatToHTML(text) {
-  if (!text) return '';
-  const escaped = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  return escaped.split('\n').map(line => line.trim() ? `<p style="margin: 0 0 10px 0; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333333;">${line}</p>` : '<br/>').join('');
+  isProcessing = false;
 }
 
-// Send Mail Route
-app.post('/api/send-email', requireLogin, async (req, res) => {
+// Mail API Endpoint
+app.post('/api/send-email', requireLogin, (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to, clientEmail, recipient } = req.body;
-  const clientTargetEmail = to || clientEmail || recipient;
+  const targetEmail = to || clientEmail || recipient;
 
-  if (!gmailId || !appPassword || !clientTargetEmail) {
-    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  if (!gmailId || !appPassword || !targetEmail) {
+    return res.status(400).json({ success: false, message: 'Missing required parameters' });
   }
 
-  // Basic email sanitization
-  const cleanTo = clientTargetEmail.trim().toLowerCase();
+  const cleanTo = targetEmail.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTo)) {
     return res.status(400).json({ success: false, message: 'Invalid recipient email' });
   }
 
-  try {
-    const transporter = getTransporter(gmailId, appPassword);
+  // Push job into sequence queue
+  emailQueue.push({
+    senderName,
+    gmailId,
+    appPassword,
+    subject,
+    messageBody: messageBody || '',
+    to: cleanTo
+  });
 
-    // Exact 1.1 Second delay execution before sending
-    await sleep(1100);
+  // Start background queue processing safely
+  processQueue();
 
-    const fromAddress = senderName 
-      ? `"${senderName.replace(/"/g, '')}" <${gmailId}>` 
-      : `"${gmailId}" <${gmailId}>`;
-
-    const htmlBody = formatToHTML(messageBody);
-
-    // Send Mail with Anti-Spam Headers & Dual Format (HTML + Plain Text)
-    await transporter.sendMail({
-      from: fromAddress,
-      replyTo: fromAddress,
-      to: cleanTo,
-      subject: subject || '',
-      text: messageBody,        // Plain text fallback
-      html: htmlBody,           // HTML format (prevents spam flagging)
-      headers: {
-        'X-Mailer': 'GmailApp-Mailer',
-        'X-Priority': '3 (Normal)',
-        'Message-ID': `<${Date.now()}.${Math.random().toString(36).substring(2, 9)}@gmail.com>`
-      }
-    });
-
-    res.json({ success: true, message: `Email sent to ${cleanTo} with 1.1s speed control.` });
-  } catch (err) {
-    console.error(`❌ ${cleanTo}:`, err.message);
-    res.status(500).json({ success: false, message: err.message });
-  }
+  res.json({
+    success: true,
+    message: `Mail added to queue successfully. Waiting line: ${emailQueue.length}`
+  });
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Fast Mailer running on port ${PORT}`));
+// Check remaining queue count API
+app.get('/api/queue-status', requireLogin, (req, res) => {
+  res.json({
+    pendingEmails: emailQueue.length,
+    isProcessing: isProcessing
+  });
+});
+
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Queue Mailer Engine Active on Port ${PORT}`));
