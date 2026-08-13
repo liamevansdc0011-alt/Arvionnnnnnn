@@ -1,9 +1,8 @@
 {
   "name": "fast-mailer-app",
   "version": "1.0.0",
-  "description": "Secure Email Sending Application",
+  "description": "Express.js base fast mailer application",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
@@ -11,12 +10,13 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "express-rate-limit": "^7.2.0",
     "express-session": "^1.18.0",
     "nodemailer": "^6.9.13"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
   },
-  "private": true
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
