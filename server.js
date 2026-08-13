@@ -32,7 +32,6 @@ app.get('/launcher', requireLogin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Same credentials as requested (@#@#@)
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   const validUser = process.env.ADMIN_USER || '@#@#@';
@@ -50,40 +49,28 @@ app.post('/logout', (req, res) => {
 
 app.post('/api/send-email', requireLogin, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to } = req.body;
-  
-  if (!gmailId || !appPassword || !to || !subject || !messageBody)
+  if (!gmailId || !appPassword || !to)
     return res.status(400).json({ success: false, message: 'Missing fields' });
 
-  // Transporter configuration with connection pool optimization
   const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // SSL for stable authentication
+    service: 'gmail',
     auth: { user: gmailId, pass: appPassword }
   });
 
-  const fromAddress = senderName ? `"${senderName}" <${gmailId}>` : gmailId;
-
   try {
-    const info = await transporter.sendMail({
-      from: fromAddress,
+    await transporter.sendMail({
+      from: senderName ? `"${senderName}" <${gmailId}>` : `"${gmailId}" <${gmailId}>`,
       to,
       subject,
-      text: messageBody, // Plain text is primary
-      replyTo: gmailId,
-      headers: {
-        'X-Priority': '3', // Normal Priority (avoid '1' or high priority as spam filters flag it)
-        'X-MSMail-Priority': 'Normal',
-        'Importance': 'Normal'
-      }
+      text: messageBody
+      // HTML nahi — plain text = personal email = Primary inbox
+      // Koi bulk/newsletter headers nahi
     });
-
-    console.log(`✅ Sent to ${to} | ID: ${info.messageId}`);
-    res.json({ success: true, messageId: info.messageId });
+    res.json({ success: true });
   } catch (err) {
-    console.error(`❌ Error sending to ${to}:`, err.message);
+    console.error(`❌ ${to}:`, err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Fast Mailer running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Fast Mailer on port ${PORT}`));
