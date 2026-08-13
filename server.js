@@ -8,7 +8,7 @@ require('dotenv').config();
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Render behind reverse proxy fix for session cookies
+// Trust proxy for Render environment
 app.set('trust proxy', 1);
 
 app.use(bodyParser.json());
@@ -18,9 +18,9 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2024',
   resave: false,
   saveUninitialized: false,
-  cookie: { 
-    secure: process.env.NODE_ENV === 'production', // Production me secure SSL cookies
-    maxAge: 1000 * 60 * 60 * 8 
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 1000 * 60 * 60 * 8
   }
 }));
 
@@ -67,7 +67,7 @@ function getTransporter(gmailId, appPassword) {
     return cached.instance;
   }
 
-  // Create transporter optimized for clean 1-by-1 delivery
+  // Optimized SMTP pool for human-like steady delivery
   const instance = nodemailer.createTransport({
     pool: true,
     host: 'smtp.gmail.com',
@@ -77,11 +77,11 @@ function getTransporter(gmailId, appPassword) {
       user: gmailId,
       pass: appPassword
     },
-    maxConnections: 3,
-    maxMessages: 200,
+    maxConnections: 1,      // Single connection to avoid aggressive Gmail spam triggers
+    maxMessages: 100,
     rateLimit: true,
-    rateDelta: 1000,
-    rateLimitNum: 2
+    rateDelta: 1100,         // 1.1 Seconds rate limit window
+    rateLimitNum: 1          // Strictly 1 mail per 1.1 seconds
   });
 
   transporters.set(key, {
@@ -103,36 +103,62 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// API Route: Directly sends mail to Client's Email ID
+// Helper function for 1.1-second delay
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Helper to convert raw text into clean HTML paragraphs
+function formatToHTML(text) {
+  if (!text) return '';
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped.split('\n').map(line => line.trim() ? `<p style="margin: 0 0 10px 0; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333333;">${line}</p>` : '<br/>').join('');
+}
+
+// Send Mail Route
 app.post('/api/send-email', requireLogin, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to, clientEmail, recipient } = req.body;
-  
-  // Client ID fallback check (accepts 'to', 'clientEmail', or 'recipient')
   const clientTargetEmail = to || clientEmail || recipient;
 
   if (!gmailId || !appPassword || !clientTargetEmail) {
-    return res.status(400).json({ success: false, message: 'Missing required email fields (Gmail ID, App Password, or Client Email)' });
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
   // Basic email sanitization
   const cleanTo = clientTargetEmail.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTo)) {
-    return res.status(400).json({ success: false, message: 'Invalid client recipient email address' });
+    return res.status(400).json({ success: false, message: 'Invalid recipient email' });
   }
 
   try {
     const transporter = getTransporter(gmailId, appPassword);
 
-    // Send email directly to client ID while maintaining original SMTP flow
+    // Exact 1.1 Second delay execution before sending
+    await sleep(1100);
+
+    const fromAddress = senderName 
+      ? `"${senderName.replace(/"/g, '')}" <${gmailId}>` 
+      : `"${gmailId}" <${gmailId}>`;
+
+    const htmlBody = formatToHTML(messageBody);
+
+    // Send Mail with Anti-Spam Headers & Dual Format (HTML + Plain Text)
     await transporter.sendMail({
-      from: senderName ? `"${senderName}" <${gmailId}>` : `"${gmailId}" <${gmailId}>`,
-      replyTo: senderName ? `"${senderName}" <${gmailId}>` : gmailId,
-      to: cleanTo, // Client's email address
-      subject: subject,
-      text: messageBody
+      from: fromAddress,
+      replyTo: fromAddress,
+      to: cleanTo,
+      subject: subject || '',
+      text: messageBody,        // Plain text fallback
+      html: htmlBody,           // HTML format (prevents spam flagging)
+      headers: {
+        'X-Mailer': 'GmailApp-Mailer',
+        'X-Priority': '3 (Normal)',
+        'Message-ID': `<${Date.now()}.${Math.random().toString(36).substring(2, 9)}@gmail.com>`
+      }
     });
 
-    res.json({ success: true, message: `Email sent successfully to ${cleanTo}` });
+    res.json({ success: true, message: `Email sent to ${cleanTo} with 1.1s speed control.` });
   } catch (err) {
     console.error(`❌ ${cleanTo}:`, err.message);
     res.status(500).json({ success: false, message: err.message });
