@@ -38,7 +38,7 @@ app.get('/launcher', requireLogin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Login Handler with Automatic Redirect Fix
+// Direct Server-Side Redirect Handler (Fixes white screen / text issue)
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   const validUser = process.env.ADMIN_USER || '@#@#@';
@@ -46,29 +46,20 @@ app.post('/login', (req, res) => {
 
   if (username === validUser && password === validPass) {
     req.session.loggedIn = true;
-    
-    // Check if AJAX request or standard form submit
-    if (req.headers['content-type']?.includes('application/json')) {
-      return res.json({ success: true, redirectUrl: '/launcher' });
-    }
-    return res.redirect('/launcher');
+    return res.redirect('/launcher'); // Direct browser navigation
   }
 
-  if (req.headers['content-type']?.includes('application/json')) {
-    return res.status(401).json({ success: false, message: 'Invalid credentials' });
-  }
-  res.redirect('/?error=1');
+  res.redirect('/?error=invalid');
 });
 
 app.post('/logout', (req, res) => {
-  req.session.destroy(() => res.json({ success: true }));
+  req.session.destroy(() => res.redirect('/'));
 });
 
 const transporterCache = new Map();
 
 function getTransporter(gmailId, appPassword) {
   const cacheKey = `${gmailId.trim()}:${appPassword.trim()}`;
-  
   if (!transporterCache.has(cacheKey)) {
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
@@ -90,6 +81,7 @@ function generateUniqueCode() {
   return `REF-${randomHex}-${timeSuffix}`;
 }
 
+// Anti-Spam Email Sending API
 app.post('/api/send-email', requireLogin, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to } = req.body;
 
@@ -133,4 +125,4 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Fast Mailer running on http://localhost:${PORT}`));
