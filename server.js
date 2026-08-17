@@ -10,58 +10,59 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Render environment variable ya default password '####' use hoga
+// Render sets process.env.PORT automatically
 const PORT = process.env.PORT || 3000;
 const SITE_PASSWORD = process.env.SITE_PASSWORD || '####';
 
-// Express Middlewares
+// Middlewares
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// Static files serving
+// Static files (login.html & launcher.html) serve karne ke liye
 app.use(express.static(path.join(__dirname, "public")));
 
 /* ==========================================================================
-   HEALTH CHECK ROUTE (Render Keep-Alive / Health Monitoring)
+   1. HEALTH CHECK ROUTE (Render Ping)
    ========================================================================== */
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", timestamp: new Date() });
 });
 
 /* ==========================================================================
-   SMTP TRANSPORTER FACTORY
-   ========================================================================== */
-function getTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '465', 10),
-    secure: process.env.SMTP_SECURE !== 'false',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    },
-    pool: true,
-    maxConnections: 2,
-    maxMessages: 50
-  });
-}
-
-/* ==========================================================================
-   AUTH ROUTE (Password Check)
+   2. AUTHENTICATION API
    ========================================================================== */
 app.post("/api/auth", (req, res) => {
   const { password } = req.body;
   if (password === SITE_PASSWORD) {
     return res.json({ success: true });
   }
-  return res.status(401).json({ success: false, message: "Unauthorized password" });
+  return res.status(401).json({ success: false, message: "Incorrect password" });
 });
 
 /* ==========================================================================
-   SSE STREAM ROUTE
+   3. SMTP TRANSPORTER POOL
+   ========================================================================== */
+function getTransporter() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '465', 10),
+    secure: process.env.SMTP_SECURE !== 'false', // true for 465, false for 587
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    },
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100
+  });
+}
+
+/* ==========================================================================
+   4. SSE REAL-TIME MAIL STREAMING ENDPOINT
    ========================================================================== */
 app.post("/api/send-stream", async (req, res) => {
+  // Render Nginx buffering bypass headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
@@ -70,7 +71,7 @@ app.post("/api/send-stream", async (req, res) => {
   const { subject, messageBody, recipients, senderName } = req.body;
 
   if (!subject || !messageBody || !Array.isArray(recipients) || recipients.length === 0) {
-    res.write(`data: ${JSON.stringify({ success: false, error: "Missing required payload" })}\n\n`);
+    res.write(`data: ${JSON.stringify({ success: false, error: "Missing required mail fields" })}\n\n`);
     res.end();
     return;
   }
@@ -92,7 +93,7 @@ app.post("/api/send-stream", async (req, res) => {
         subject: subject,
         html: messageBody,
         headers: {
-          'X-Mailer': 'Render-Node-Engine/1.0',
+          'X-Mailer': 'Render-SecureMail-Engine/2.0',
           'List-Unsubscribe': `<mailto:${senderEmail}?subject=unsubscribe>`
         }
       };
@@ -107,7 +108,7 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
 
     } catch (error) {
-      console.error(`[Render Error] ${recipient}:`, error.message);
+      console.error(`[Mail Error] Target: ${recipient}:`, error.message);
       res.write(`data: ${JSON.stringify({
         success: false,
         recipient,
@@ -115,6 +116,7 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
     }
 
+    // Rate Limiting (2 seconds delay between messages)
     if (index < recipients.length - 1) {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
@@ -124,14 +126,25 @@ app.post("/api/send-stream", async (req, res) => {
   res.end();
 });
 
-// Single Page Application (SPA) fallback
+/* ==========================================================================
+   5. ROUTING (Default Page Redirects to login.html)
+   ========================================================================== */
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
+});
+
+app.get("/launcher.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "launcher.html"));
+});
+
+// Fallback Route
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
 /* ==========================================================================
-   SERVER INITIALIZATION
+   SERVER LISTEN (0.0.0.0 binding is required for Render)
    ========================================================================== */
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Render service active and listening on port ${PORT}`);
+  console.log(`Server executing and bound to 0.0.0.0:${PORT}`);
 });
