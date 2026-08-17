@@ -64,10 +64,9 @@
 
         if (response.ok && data.success) {
           showAlert('success', '✅ Login successful! Redirecting...');
-          // Page Redirection Fix
           setTimeout(() => {
             window.location.href = '/launcher';
-          }, 500);
+          }, 300);
         } else {
           showAlert('danger', data.message || 'Invalid username or password');
           submitBtn.innerText = 'Login';
