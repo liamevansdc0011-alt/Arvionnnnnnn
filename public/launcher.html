@@ -3,99 +3,137 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - Fast Mailer</title>
+  <title>Mail Launcher Console</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f1f5f9; margin: 0; padding: 20px; }
-    .container { max-width: 600px; margin: auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; margin-bottom: 20px; }
-    .header h2 { margin: 0; color: #0f172a; }
-    .logout-btn { background: #ef4444; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; }
-    label { font-weight: 600; font-size: 13px; color: #334155; display: block; margin-top: 12px; }
-    input, textarea { width: 100%; padding: 10px; margin-top: 4px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
-    textarea { height: 110px; resize: vertical; }
-    .send-btn { width: 100%; background: #10b981; color: #fff; border: none; padding: 14px; margin-top: 20px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }
-    .send-btn:hover { background: #059669; }
-    .result { margin-top: 15px; padding: 12px; border-radius: 6px; display: none; font-size: 14px; font-weight: 500; }
-    .result.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; display: block; }
-    .result.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; display: block; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; padding: 30px 20px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 750px; background: #1e293b; padding: 30px; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
+    .header h2 { color: #38bdf8; font-size: 1.4rem; }
+    .logout-btn { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+    .logout-btn:hover { background: #dc2626; }
+    .form-group { margin-bottom: 18px; }
+    label { display: block; margin-bottom: 6px; font-size: 0.85rem; color: #94a3b8; font-weight: 500; }
+    input, textarea { width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #fff; font-size: 0.95rem; outline: none; }
+    input:focus, textarea:focus { border-color: #38bdf8; }
+    button.send-btn { width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    button.send-btn:hover { background: #0369a1; }
+    button:disabled { background: #475569; cursor: not-allowed; }
+    #logBox { margin-top: 25px; background: #090d16; padding: 15px; border-radius: 6px; max-height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; border: 1px solid #334155; }
+    .log-item { margin-bottom: 6px; }
+    .log-success { color: #4ade80; }
+    .log-error { color: #f87171; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
+
   <div class="container">
     <div class="header">
-      <h2>Fast Mailer Launcher</h2>
-      <form action="/logout" method="POST" style="margin: 0;">
-        <button type="submit" class="logout-btn">Logout</button>
-      </form>
+      <h2>Mail Broadcast Launcher</h2>
+      <button class="logout-btn" onclick="logout()">Logout</button>
     </div>
 
-    <form id="mailForm">
-      <label>Sender Name</label>
-      <input type="text" id="senderName" placeholder="John Doe" required />
+    <div class="form-group">
+      <label for="senderName">Sender Display Name</label>
+      <input type="text" id="senderName" placeholder="e.g., Support Team">
+    </div>
 
-      <label>Gmail Address</label>
-      <input type="email" id="gmailId" placeholder="yourmail@gmail.com" required />
+    <div class="form-group">
+      <label for="subject">Email Subject</label>
+      <input type="text" id="subject" placeholder="Important System Update">
+    </div>
 
-      <label>Gmail App Password (16-Digit)</label>
-      <input type="password" id="appPassword" placeholder="xxxx xxxx xxxx xxxx" required />
+    <div class="form-group">
+      <label for="messageBody">Message Body (HTML Allowed)</label>
+      <textarea id="messageBody" rows="5" placeholder="<p>Hello,</p><p>This is a broadcast message.</p>"></textarea>
+    </div>
 
-      <label>Recipient Email</label>
-      <input type="email" id="to" placeholder="recipient@example.com" required />
+    <div class="form-group">
+      <label for="recipients">Recipients List (One email per line)</label>
+      <textarea id="recipients" rows="5" placeholder="user1@domain.com&#10;user2@domain.com"></textarea>
+    </div>
 
-      <label>Subject</label>
-      <input type="text" id="subject" placeholder="Enter Subject" required />
+    <button class="send-btn" id="sendBtn" onclick="startBroadcast()">Launch Broadcast</button>
 
-      <label>Message Body</label>
-      <textarea id="messageBody" placeholder="Enter your email message here..." required></textarea>
-
-      <button type="submit" class="send-btn" id="sendBtn">Send Email</button>
-    </form>
-
-    <div id="resultBox" class="result"></div>
+    <div id="logBox" class="hidden"></div>
   </div>
 
   <script>
-    document.getElementById('mailForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const sendBtn = document.getElementById('sendBtn');
-      const resultBox = document.getElementById('resultBox');
-      
-      sendBtn.disabled = true;
-      sendBtn.innerText = 'Sending...';
-      resultBox.style.display = 'none';
+    // Session Guard
+    if (sessionStorage.getItem('authenticated') !== 'true') {
+      window.location.href = '/login.html';
+    }
 
-      const payload = {
-        senderName: document.getElementById('senderName').value,
-        gmailId: document.getElementById('gmailId').value,
-        appPassword: document.getElementById('appPassword').value,
-        to: document.getElementById('to').value,
-        subject: document.getElementById('subject').value,
-        messageBody: document.getElementById('messageBody').value
-      };
+    function logout() {
+      sessionStorage.removeItem('authenticated');
+      window.location.href = '/login.html';
+    }
+
+    async function startBroadcast() {
+      const senderName = document.getElementById('senderName').value;
+      const subject = document.getElementById('subject').value;
+      const messageBody = document.getElementById('messageBody').value;
+      const recipientsRaw = document.getElementById('recipients').value;
+      const recipients = recipientsRaw.split('\n').map(e => e.trim()).filter(Boolean);
+
+      if (!subject || !messageBody || recipients.length === 0) {
+        alert('Please fill out Subject, Message Body, and Recipients.');
+        return;
+      }
+
+      const sendBtn = document.getElementById('sendBtn');
+      const logBox = document.getElementById('logBox');
+
+      sendBtn.disabled = true;
+      sendBtn.innerText = 'Dispatching Stream...';
+      logBox.classList.remove('hidden');
+      logBox.innerHTML = '<div class="log-item">Initializing task dispatch...</div>';
 
       try {
-        const res = await fetch('/api/send-email', {
+        const response = await fetch('/api/send-stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ senderName, subject, messageBody, recipients })
         });
 
-        const data = await res.json();
-        if (data.success) {
-          resultBox.className = 'result success';
-          resultBox.innerText = `✅ Email sent successfully! Reference: ${data.refCode}`;
-        } else {
-          resultBox.className = 'result error';
-          resultBox.innerText = `❌ Failed: ${data.message}`;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n\n');
+
+          lines.forEach(line => {
+            if (line.startsWith('data: ')) {
+              const payload = line.replace('data: ', '').trim();
+              if (payload === '[DONE]') {
+                logBox.innerHTML += '<div class="log-item log-success"><b>[COMPLETE] All emails processed.</b></div>';
+              } else {
+                try {
+                  const data = JSON.parse(payload);
+                  if (data.success) {
+                    logBox.innerHTML += `<div class="log-item log-success">[${data.progress}] Sent -> ${data.recipient}</div>`;
+                  } else {
+                    logBox.innerHTML += `<div class="log-item log-error">Failed -> ${data.recipient} (${data.error})</div>`;
+                  }
+                } catch (e) {}
+              }
+            }
+          });
+          logBox.scrollTop = logBox.scrollHeight;
         }
+
       } catch (err) {
-        resultBox.className = 'result error';
-        resultBox.innerText = '❌ Connection error with server.';
+        logBox.innerHTML += `<div class="log-item log-error">Network error: ${err.message}</div>`;
       } finally {
         sendBtn.disabled = false;
-        sendBtn.innerText = 'Send Email';
+        sendBtn.innerText = 'Launch Broadcast';
       }
-    });
+    }
   </script>
 </body>
 </html>
