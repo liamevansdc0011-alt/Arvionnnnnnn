@@ -8,26 +8,27 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Express built-in body parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2024',
+  secret: process.env.SESSION_SECRET || 'fast-mailer-secret-2026',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 1000 * 60 * 60 * 8 }
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 1000 * 60 * 60 * 8
+  }
 }));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Authentication Middleware
 function requireLogin(req, res, next) {
   if (req.session?.loggedIn) return next();
   res.redirect('/');
 }
 
-// Routes
 app.get('/', (req, res) => {
   if (req.session?.loggedIn) return res.redirect('/launcher');
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -37,7 +38,7 @@ app.get('/launcher', requireLogin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Exact Login Logic (Fallback Same As Original Code)
+// Login Check (Same credentials: @#@#@)
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   const validUser = process.env.ADMIN_USER || '@#@#@';
@@ -47,14 +48,14 @@ app.post('/login', (req, res) => {
     req.session.loggedIn = true;
     return res.json({ success: true });
   }
-  res.json({ success: false, message: 'Invalid username or password' });
+  res.status(401).json({ success: false, message: 'Invalid username or password' });
 });
 
 app.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
 
-// Transporter Cache for Speed Optimization
+// Transporter Cache
 const transporterCache = new Map();
 
 function getTransporter(gmailId, appPassword) {
@@ -65,8 +66,8 @@ function getTransporter(gmailId, appPassword) {
       host: 'smtp.gmail.com',
       port: 465,
       secure: true,
-      pool: true, // Connection Pooling for High Speed
-      maxConnections: 5,
+      pool: true,
+      maxConnections: 3,
       maxMessages: 100,
       auth: {
         user: gmailId,
@@ -75,50 +76,59 @@ function getTransporter(gmailId, appPassword) {
     });
     transporterCache.set(cacheKey, transporter);
   }
-  
   return transporterCache.get(cacheKey);
 }
 
-// Unique Ref/ID Code Generator
 function generateUniqueCode() {
-  const randomHex = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const randomHex = crypto.randomBytes(3).toString('hex').toUpperCase();
   const timeSuffix = Date.now().toString().slice(-4);
-  return `ID-${randomHex}-${timeSuffix}`;
+  return `REF-${randomHex}-${timeSuffix}`;
 }
 
-// Mail Send API
+// Anti-Spam Inbox Delivery API
 app.post('/api/send-email', requireLogin, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to } = req.body;
 
   if (!gmailId || !appPassword || !to) {
-    return res.status(400).json({ success: false, message: 'Missing fields' });
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
   try {
     const transporter = getTransporter(gmailId, appPassword);
     const uniqueId = generateUniqueCode();
-
-    // Template ke neeche unique ID append karna (Inbox delivery me help karta hai)
-    const finalMessageBody = `${messageBody ? messageBody.trim() : ''}\n\n---\nRef Code: [${uniqueId}]`;
+    
+    const cleanSenderName = senderName ? senderName.replace(/["\r\n]/g, '').trim() : '';
+    const cleanSubject = subject ? subject.replace(/[\r\n]/g, '').trim() : '';
+    
+    // Natural Body Text & Formatting (Avoid Spam Filters)
+    const rawText = messageBody ? messageBody.trim() : '';
+    const formattedText = `${rawText}\n\n---\nTracking Ref: ${uniqueId}`;
+    
+    // Convert newlines to HTML paragraphs for clean inbox rendering
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; font-size: 14px; color: #222; line-height: 1.6;">
+        ${rawText.replace(/\n/g, '<br>')}
+        <br><br>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;" />
+        <span style="font-size: 11px; color: #888;">Reference Code: ${uniqueId}</span>
+      </div>
+    `;
 
     const mailOptions = {
-      from: senderName ? `"${senderName}" <${gmailId}>` : `"${gmailId}" <${gmailId}>`,
+      from: cleanSenderName ? `"${cleanSenderName}" <${gmailId.trim()}>` : `<${gmailId.trim()}>`,
+      replyTo: gmailId.trim(),
       to: to.trim(),
-      subject: subject,
-      text: finalMessageBody,
-      headers: {
-        'X-Mailer': 'Microsoft Outlook 16.0',
-        'X-Priority': '3 (Normal)',
-        'Message-ID': `<${Date.now()}.${uniqueId}@gmail.com>`
-      }
+      subject: cleanSubject,
+      text: formattedText,
+      html: htmlBody
     };
 
     await transporter.sendMail(mailOptions);
     res.json({ success: true, refCode: uniqueId });
   } catch (err) {
-    console.error(`❌ ${to}:`, err.message);
-    res.status(500).json({ success: false, message: err.message });
+    console.error(`❌ Mail error (${to}):`, err.message);
+    res.status(500).json({ success: false, message: err.message || 'Failed to send' });
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Fast Mailer on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Fast Mailer running on port ${PORT}`));
