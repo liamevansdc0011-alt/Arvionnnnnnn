@@ -34,21 +34,37 @@
       <button class="logout-btn" onclick="logout()">Logout</button>
     </div>
 
+    <!-- 1. Sender Gmail ID -->
+    <div class="form-group">
+      <label for="smtpUser">Sender Email (Gmail ID)</label>
+      <input type="email" id="smtpUser" placeholder="your-email@gmail.com">
+    </div>
+
+    <!-- 2. Gmail App Password -->
+    <div class="form-group">
+      <label for="smtpPass">Gmail App Password (16-Digit Password)</label>
+      <input type="password" id="smtpPass" placeholder="xxxx xxxx xxxx xxxx">
+    </div>
+
+    <!-- 3. Sender Display Name -->
     <div class="form-group">
       <label for="senderName">Sender Display Name</label>
       <input type="text" id="senderName" placeholder="e.g., Support Team">
     </div>
 
+    <!-- 4. Subject -->
     <div class="form-group">
       <label for="subject">Email Subject</label>
       <input type="text" id="subject" placeholder="Important System Update">
     </div>
 
+    <!-- 5. Message Body -->
     <div class="form-group">
       <label for="messageBody">Message Body (HTML Allowed)</label>
       <textarea id="messageBody" rows="5" placeholder="<p>Hello,</p><p>This is a broadcast message.</p>"></textarea>
     </div>
 
+    <!-- 6. Recipients List -->
     <div class="form-group">
       <label for="recipients">Recipients List (One email per line)</label>
       <textarea id="recipients" rows="5" placeholder="user1@domain.com&#10;user2@domain.com"></textarea>
@@ -60,7 +76,6 @@
   </div>
 
   <script>
-    // Session Guard
     if (sessionStorage.getItem('authenticated') !== 'true') {
       window.location.href = '/login.html';
     }
@@ -71,14 +86,16 @@
     }
 
     async function startBroadcast() {
-      const senderName = document.getElementById('senderName').value;
-      const subject = document.getElementById('subject').value;
+      const smtpUser = document.getElementById('smtpUser').value.trim();
+      const smtpPass = document.getElementById('smtpPass').value.trim();
+      const senderName = document.getElementById('senderName').value.trim();
+      const subject = document.getElementById('subject').value.trim();
       const messageBody = document.getElementById('messageBody').value;
       const recipientsRaw = document.getElementById('recipients').value;
       const recipients = recipientsRaw.split('\n').map(e => e.trim()).filter(Boolean);
 
-      if (!subject || !messageBody || recipients.length === 0) {
-        alert('Please fill out Subject, Message Body, and Recipients.');
+      if (!smtpUser || !smtpPass || !subject || !messageBody || recipients.length === 0) {
+        alert('Please fill out Gmail ID, App Password, Subject, Body, and Recipients.');
         return;
       }
 
@@ -88,13 +105,13 @@
       sendBtn.disabled = true;
       sendBtn.innerText = 'Dispatching Stream...';
       logBox.classList.remove('hidden');
-      logBox.innerHTML = '<div class="log-item">Initializing task dispatch...</div>';
+      logBox.innerHTML = '<div class="log-item">Initializing SMTP connection...</div>';
 
       try {
         const response = await fetch('/api/send-stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ senderName, subject, messageBody, recipients })
+          body: JSON.stringify({ smtpUser, smtpPass, senderName, subject, messageBody, recipients })
         });
 
         const reader = response.body.getReader();
@@ -111,7 +128,7 @@
             if (line.startsWith('data: ')) {
               const payload = line.replace('data: ', '').trim();
               if (payload === '[DONE]') {
-                logBox.innerHTML += '<div class="log-item log-success"><b>[COMPLETE] All emails processed.</b></div>';
+                logBox.innerHTML += '<div class="log-item log-success"><b>[COMPLETE] All dispatches finished.</b></div>';
               } else {
                 try {
                   const data = JSON.parse(payload);
