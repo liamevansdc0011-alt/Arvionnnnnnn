@@ -3,32 +3,62 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - Fast Mailer</title>
+  <title>Console Login</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    .card { background: #1e293b; padding: 35px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 320px; border: 1px solid #334155; }
-    h2 { text-align: center; margin-bottom: 25px; color: #38bdf8; }
-    input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #475569; background: #0f172a; color: #fff; border-radius: 6px; box-sizing: border-box; }
-    button { width: 100%; padding: 12px; background: #0284c7; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 15px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    .card { width: 100%; max-width: 400px; background: #1e293b; padding: 30px; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.4); text-align: center; }
+    h2 { margin-bottom: 20px; color: #38bdf8; font-size: 1.5rem; }
+    .input-group { margin-bottom: 20px; text-align: left; }
+    label { display: block; margin-bottom: 8px; font-size: 0.85rem; color: #94a3b8; }
+    input { width: 100%; padding: 12px 14px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #fff; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+    input:focus { border-color: #38bdf8; }
+    button { width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
     button:hover { background: #0369a1; }
-    .error { color: #f87171; text-align: center; margin-top: 15px; font-size: 14px; display: none; }
+    .error-msg { margin-top: 15px; font-size: 0.85rem; color: #f87171; display: none; }
   </style>
 </head>
 <body>
+
   <div class="card">
-    <h2>Fast Mailer Login</h2>
-    <!-- Direct native form post -->
-    <form action="/login" method="POST">
-      <input type="text" name="username" placeholder="Username" required />
-      <input type="password" name="password" placeholder="Password" required />
-      <button type="submit">Login</button>
-    </form>
-    <div id="errorMsg" class="error">❌ Invalid Username or Password</div>
+    <h2>Secure Mail Login</h2>
+    <div class="input-group">
+      <label for="password">Enter Access Key</label>
+      <input type="password" id="password" placeholder="••••••••" onkeypress="handleKeyPress(event)">
+    </div>
+    <button onclick="submitAuth()">Unlock Console</button>
+    <div id="errorMsg" class="error-msg">Incorrect password provided.</div>
   </div>
 
   <script>
-    if (window.location.search.includes('error=invalid')) {
-      document.getElementById('errorMsg').style.display = 'block';
+    function handleKeyPress(e) {
+      if (e.key === 'Enter') submitAuth();
+    }
+
+    async function submitAuth() {
+      const password = document.getElementById('password').value;
+      const errorMsg = document.getElementById('errorMsg');
+      errorMsg.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          sessionStorage.setItem('authenticated', 'true');
+          window.location.href = '/launcher.html';
+        } else {
+          errorMsg.innerText = data.message || 'Invalid Password';
+          errorMsg.style.display = 'block';
+        }
+      } catch (err) {
+        errorMsg.innerText = 'Unable to connect to authentication endpoint.';
+        errorMsg.style.display = 'block';
+      }
     }
   </script>
 </body>
