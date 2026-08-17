@@ -38,7 +38,6 @@ app.get('/launcher', requireLogin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Login Check (Same credentials: @#@#@)
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   const validUser = process.env.ADMIN_USER || '@#@#@';
@@ -46,7 +45,7 @@ app.post('/login', (req, res) => {
 
   if (username === validUser && password === validPass) {
     req.session.loggedIn = true;
-    return res.json({ success: true });
+    return res.json({ success: true, redirectUrl: '/launcher' });
   }
   res.status(401).json({ success: false, message: 'Invalid username or password' });
 });
@@ -55,23 +54,19 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
 
-// Transporter Cache
 const transporterCache = new Map();
 
 function getTransporter(gmailId, appPassword) {
-  const cacheKey = `${gmailId}:${appPassword}`;
+  const cacheKey = `${gmailId.trim()}:${appPassword.trim()}`;
   
   if (!transporterCache.has(cacheKey)) {
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 465,
       secure: true,
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 100,
       auth: {
-        user: gmailId,
-        pass: appPassword
+        user: gmailId.trim(),
+        pass: appPassword.trim()
       }
     });
     transporterCache.set(cacheKey, transporter);
@@ -85,7 +80,6 @@ function generateUniqueCode() {
   return `REF-${randomHex}-${timeSuffix}`;
 }
 
-// Anti-Spam Inbox Delivery API
 app.post('/api/send-email', requireLogin, async (req, res) => {
   const { senderName, gmailId, appPassword, subject, messageBody, to } = req.body;
 
@@ -97,26 +91,24 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
     const transporter = getTransporter(gmailId, appPassword);
     const uniqueId = generateUniqueCode();
     
+    const cleanSender = gmailId.trim();
     const cleanSenderName = senderName ? senderName.replace(/["\r\n]/g, '').trim() : '';
     const cleanSubject = subject ? subject.replace(/[\r\n]/g, '').trim() : '';
-    
-    // Natural Body Text & Formatting (Avoid Spam Filters)
     const rawText = messageBody ? messageBody.trim() : '';
-    const formattedText = `${rawText}\n\n---\nTracking Ref: ${uniqueId}`;
-    
-    // Convert newlines to HTML paragraphs for clean inbox rendering
+
+    const formattedText = `${rawText}\n\nTracking Ref: ${uniqueId}`;
     const htmlBody = `
-      <div style="font-family: Arial, sans-serif; font-size: 14px; color: #222; line-height: 1.6;">
+      <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.6;">
         ${rawText.replace(/\n/g, '<br>')}
         <br><br>
         <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;" />
-        <span style="font-size: 11px; color: #888;">Reference Code: ${uniqueId}</span>
+        <span style="font-size: 11px; color: #777;">Ref Code: ${uniqueId}</span>
       </div>
     `;
 
     const mailOptions = {
-      from: cleanSenderName ? `"${cleanSenderName}" <${gmailId.trim()}>` : `<${gmailId.trim()}>`,
-      replyTo: gmailId.trim(),
+      from: cleanSenderName ? `"${cleanSenderName}" <${cleanSender}>` : `<${cleanSender}>`,
+      replyTo: cleanSender,
       to: to.trim(),
       subject: cleanSubject,
       text: formattedText,
@@ -126,9 +118,9 @@ app.post('/api/send-email', requireLogin, async (req, res) => {
     await transporter.sendMail(mailOptions);
     res.json({ success: true, refCode: uniqueId });
   } catch (err) {
-    console.error(`❌ Mail error (${to}):`, err.message);
+    console.error(`Mail error (${to}):`, err.message);
     res.status(500).json({ success: false, message: err.message || 'Failed to send' });
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Fast Mailer running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Fast Mailer running on port ${PORT}`));
