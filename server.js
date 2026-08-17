@@ -10,27 +10,24 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Render sets process.env.PORT automatically
 const PORT = process.env.PORT || 3000;
 const SITE_PASSWORD = process.env.SITE_PASSWORD || '####';
 
-// Middlewares
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// Static files (login.html & launcher.html) serve karne ke liye
 app.use(express.static(path.join(__dirname, "public")));
 
 /* ==========================================================================
-   1. HEALTH CHECK ROUTE (Render Ping)
+   HEALTH CHECK ROUTE
    ========================================================================== */
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", timestamp: new Date() });
 });
 
 /* ==========================================================================
-   2. AUTHENTICATION API
+   AUTHENTICATION ROUTE
    ========================================================================== */
 app.post("/api/auth", (req, res) => {
   const { password } = req.body;
@@ -41,44 +38,44 @@ app.post("/api/auth", (req, res) => {
 });
 
 /* ==========================================================================
-   3. SMTP TRANSPORTER POOL
-   ========================================================================== */
-function getTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '465', 10),
-    secure: process.env.SMTP_SECURE !== 'false', // true for 465, false for 587
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    },
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 100
-  });
-}
-
-/* ==========================================================================
-   4. SSE REAL-TIME MAIL STREAMING ENDPOINT
+   STREAMING MAIL SENDER ENDPOINT
    ========================================================================== */
 app.post("/api/send-stream", async (req, res) => {
-  // Render Nginx buffering bypass headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
 
-  const { subject, messageBody, recipients, senderName } = req.body;
+  const { smtpUser, smtpPass, senderName, subject, messageBody, recipients } = req.body;
 
-  if (!subject || !messageBody || !Array.isArray(recipients) || recipients.length === 0) {
-    res.write(`data: ${JSON.stringify({ success: false, error: "Missing required mail fields" })}\n\n`);
+  if (!smtpUser || !smtpPass || !subject || !messageBody || !Array.isArray(recipients) || recipients.length === 0) {
+    res.write(`data: ${JSON.stringify({ success: false, error: "Sender Email, App Password, Subject, Body & Recipients are required." })}\n\n`);
     res.end();
     return;
   }
 
-  const transporter = getTransporter();
-  const senderEmail = process.env.SMTP_USER;
-  const formattedSender = senderName ? `"${senderName}" <${senderEmail}>` : senderEmail;
+  let transporter;
+  try {
+    transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: smtpUser.trim(),
+        pass: smtpPass.trim()
+      },
+      pool: true,
+      maxConnections: 2,
+      maxMessages: 50
+    });
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ success: false, error: "Transporter error: " + err.message })}\n\n`);
+    res.end();
+    return;
+  }
+
+  const cleanSenderEmail = smtpUser.trim();
+  const formattedSender = senderName ? `"${senderName.trim()}" <${cleanSenderEmail}>` : cleanSenderEmail;
 
   for (let index = 0; index < recipients.length; index++) {
     const recipient = recipients[index]?.trim();
@@ -93,8 +90,8 @@ app.post("/api/send-stream", async (req, res) => {
         subject: subject,
         html: messageBody,
         headers: {
-          'X-Mailer': 'Render-SecureMail-Engine/2.0',
-          'List-Unsubscribe': `<mailto:${senderEmail}?subject=unsubscribe>`
+          'X-Mailer': 'Render-SecureMail-Engine/3.0',
+          'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`
         }
       };
 
@@ -108,7 +105,7 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
 
     } catch (error) {
-      console.error(`[Mail Error] Target: ${recipient}:`, error.message);
+      console.error(`[Mail Error] ${recipient}:`, error.message);
       res.write(`data: ${JSON.stringify({
         success: false,
         recipient,
@@ -116,7 +113,6 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
     }
 
-    // Rate Limiting (2 seconds delay between messages)
     if (index < recipients.length - 1) {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
@@ -127,7 +123,7 @@ app.post("/api/send-stream", async (req, res) => {
 });
 
 /* ==========================================================================
-   5. ROUTING (Default Page Redirects to login.html)
+   ROUTING
    ========================================================================== */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
@@ -137,14 +133,10 @@ app.get("/launcher.html", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "launcher.html"));
 });
 
-// Fallback Route
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* ==========================================================================
-   SERVER LISTEN (0.0.0.0 binding is required for Render)
-   ========================================================================== */
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server executing and bound to 0.0.0.0:${PORT}`);
+  console.log(`Server active on port ${PORT}`);
 });
