@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fast Mailer — Launcher</title>
+<title>Fast Mailer — Inbox Launcher</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -27,21 +27,18 @@ body{min-height:100vh;background:#eef0ff;font-family:'Inter',sans-serif;color:#1
 .card-title{font-size:12px;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:18px}
 .field{margin-bottom:15px}
 .field label{display:block;font-size:13px;font-weight:600;color:#333;margin-bottom:7px}
-.field input,.field textarea{width:100%;padding:12px 15px;background:#f5f6ff;border:2px solid #dde1ff;border-radius:10px;color:#1a1a2e;font-family:'Inter',sans-serif;font-size:14px;outline:none;transition:all 0.2s;resize:none}
-.field input:focus,.field textarea:focus{border-color:#667eea;background:#fff;box-shadow:0 0 0 4px rgba(102,126,234,0.12)}
-.field input::placeholder,.field textarea::placeholder{color:#bbb}
+.field input,.field textarea,.field select{width:100%;padding:12px 15px;background:#f5f6ff;border:2px solid #dde1ff;border-radius:10px;color:#1a1a2e;font-family:'Inter',sans-serif;font-size:14px;outline:none;transition:all 0.2s;resize:none}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:#667eea;background:#fff;box-shadow:0 0 0 4px rgba(102,126,234,0.12)}
 textarea#messageBody{min-height:115px}
 textarea#recipients{min-height:145px;font-size:13px}
 .pass-wrap{position:relative}
 .pass-wrap input{padding-right:46px}
-.toggle-pass{position:absolute;right:13px;top:50%;transform:translateY(-50%);background:none;border:none;color:#aaa;cursor:pointer;font-size:17px;padding:4px;transition:color 0.2s}
-.toggle-pass:hover{color:#667eea}
+.toggle-pass{position:absolute;right:13px;top:50%;transform:translateY(-50%);background:none;border:none;color:#aaa;cursor:pointer;font-size:17px;padding:4px}
 .rec-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
-.rec-header label{margin-bottom:0}
-.badge{font-size:11px;font-weight:700;padding:3px 12px;background:#667eea;color:#fff;border-radius:20px;transition:background 0.3s}
-.tips{padding:14px;background:#f5f6ff;border:2px solid #dde1ff;border-radius:10px;font-size:12px;color:#666;line-height:1.9;margin-top:14px}
-.tips strong{color:#444;display:block;margin-bottom:5px;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;font-weight:700}
-.tips b{color:#667eea}
+.badge{font-size:11px;font-weight:700;padding:3px 12px;background:#667eea;color:#fff;border-radius:20px}
+.tips{padding:14px;background:#f5f6ff;border:2px solid #dde1ff;border-radius:10px;font-size:12px;color:#666;line-height:1.8;margin-top:14px}
+.tips strong{color:#444;display:block;margin-bottom:4px;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;font-weight:700}
+.tips b{color:#276749}
 .progress-wrap{display:none;align-items:center;gap:14px;padding:14px 20px;background:#fff;border:2px solid #dde1ff;border-radius:12px;margin-bottom:20px}
 .progress-bar{flex:1;height:8px;background:#eef0ff;border-radius:10px;overflow:hidden}
 .progress-fill{height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:10px;width:0%;transition:width 0.3s ease}
@@ -49,21 +46,18 @@ textarea#recipients{min-height:145px;font-size:13px}
 .action-row{display:flex;gap:12px;margin-bottom:20px}
 .send-btn{flex:1;padding:15px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:12px;color:#fff;font-family:'Inter',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px}
 .send-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 28px rgba(102,126,234,0.4)}
-.send-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
-.clear-btn{padding:15px 22px;background:#fff;border:2px solid #dde1ff;border-radius:12px;color:#555;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s}
-.clear-btn:hover{border-color:#e53e3e;color:#e53e3e}
+.send-btn:disabled{opacity:0.6;cursor:not-allowed}
+.clear-btn{padding:15px 22px;background:#fff;border:2px solid #dde1ff;border-radius:12px;color:#555;font-size:13px;font-weight:600;cursor:pointer}
 .log-box{display:none;background:#fff;border:2px solid #dde1ff;border-radius:14px;overflow:hidden}
 .log-header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:2px solid #eef0ff;background:#f5f6ff}
 .log-title{font-size:12px;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:1px}
 .log-clear{background:none;border:none;color:#aaa;font-size:13px;cursor:pointer;font-weight:600}
-.log-clear:hover{color:#e53e3e}
 .log-list{padding:12px;max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
-.log-item{display:flex;align-items:flex-start;gap:10px;padding:9px 13px;border-radius:8px;font-size:13px;font-weight:500;animation:logIn 0.2s ease both}
-@keyframes logIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+.log-item{display:flex;align-items:flex-start;gap:10px;padding:9px 13px;border-radius:8px;font-size:13px;font-weight:500}
 .log-item.ok{background:#f0fff4;color:#276749}
 .log-item.fail{background:#fff5f5;color:#e53e3e}
 .log-item.info{background:#ebf4ff;color:#2b6cb0}
-@media(max-width:700px){.main-grid{grid-template-columns:1fr}body{padding:14px}}
+@media(max-width:700px){.main-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -75,7 +69,7 @@ textarea#recipients{min-height:145px;font-size:13px}
 
 <div class="status-bar" id="statusBar">
   <span class="status-icon" id="statusIcon">⚡</span>
-  <span class="status-text" id="statusText">Ready to launch</span>
+  <span class="status-text" id="statusText">Ready for High-Inbox Delivery</span>
 </div>
 
 <div class="main-grid">
@@ -87,7 +81,7 @@ textarea#recipients{min-height:145px;font-size:13px}
       <label>App Password</label>
       <div class="pass-wrap">
         <input id="appPassword" type="password" placeholder="Google App Password">
-        <button class="toggle-pass" onclick="togglePass()">👁</button>
+        <button class="toggle-pass" type="button" onclick="togglePass()">👁</button>
       </div>
     </div>
     <div class="field"><label>Subject</label><input id="subject" type="text" placeholder="Email subject line"></div>
@@ -95,7 +89,7 @@ textarea#recipients{min-height:145px;font-size:13px}
   </div>
 
   <div class="card">
-    <div class="card-title">👥 Recipients</div>
+    <div class="card-title">👥 Recipients & Anti-Spam Control</div>
     <div class="field">
       <div class="rec-header">
         <label>Email List</label>
@@ -103,11 +97,20 @@ textarea#recipients{min-height:145px;font-size:13px}
       </div>
       <textarea id="recipients" placeholder="Paste emails here:&#10;&#10;alice@gmail.com&#10;bob@yahoo.com, carol@outlook.com" oninput="countRecipients()"></textarea>
     </div>
+    
+    <div class="field">
+      <label>Sending Speed (Inbox Protection)</label>
+      <select id="sendSpeed">
+        <option value="safe" selected>🛡 Safe Anti-Spam Mode (3-5 sec delay / 2 parallel)</option>
+        <option value="fast">⚡ Fast Mode (1 sec delay / 4 parallel)</option>
+      </select>
+    </div>
+
     <div class="tips">
-      <strong>📋 Mailer Status</strong>
-      Separate by comma or new line<br>
-      Automated <b>6 Parallel Mode</b> sending active<br>
-      Exact Text Delivery: 100% original text will be sent without any modifications.
+      <strong>🛡 Anti-Spam Guidelines</strong>
+      • <b>Safe Mode</b> mimics natural human sending.<br>
+      • Keep Gmail daily limits under 400 mails/day.<br>
+      • Avoid spam words in Subject (e.g. FREE, Winner, Urgent).
     </div>
   </div>
 </div>
@@ -119,90 +122,157 @@ textarea#recipients{min-height:145px;font-size:13px}
 
 <div class="action-row">
   <button class="send-btn" id="sendBtn" onclick="sendAll()">🚀 Send All Emails</button>
-  <button class="clear-btn" onclick="clearAll()">🗑 Clear All</button>
+  <button class="clear-btn" type="button" onclick="clearAll()">🗑 Clear All</button>
 </div>
 
 <div class="log-box" id="logBox">
   <div class="log-header">
-    <span class="log-title">📋 Send Log</span>
-    <button class="log-clear" onclick="clearLog()">✕ Clear</button>
+    <span class="log-title">📋 Live Send Log</span>
+    <button class="log-clear" type="button" onclick="clearLog()">✕ Clear</button>
   </div>
   <div class="log-list" id="logList"></div>
 </div>
 
 <script>
-function parseEmails(raw){return raw.split(/[\n,]+/).map(e=>e.trim().toLowerCase()).filter(e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))}
-function countRecipients(){const e=parseEmails(document.getElementById('recipients').value),b=document.getElementById('recipientCount');b.textContent=`${e.length} recipient${e.length!==1?'s':''}`;}
-function togglePass(){const i=document.getElementById('appPassword');i.type=i.type==='password'?'text':'password'}
-function setStatus(t,icon,text){const b=document.getElementById('statusBar');b.className='status-bar '+t;document.getElementById('statusIcon').textContent=icon;document.getElementById('statusText').textContent=text}
-function addLog(t,icon,msg){const lb=document.getElementById('logBox'),ll=document.getElementById('logList');lb.style.display='block';const i=document.createElement('div');i.className=`log-item ${t}`;i.innerHTML=`<span>${icon}</span><span>${msg}</span>`;ll.appendChild(i);lb.scrollTop=lb.scrollHeight}
-function clearLog(){document.getElementById('logList').innerHTML='';document.getElementById('logBox').style.display='none'}
-function setProgress(cur,tot){const w=document.getElementById('progressWrap');w.style.display='flex';const pct=tot>0?Math.round(cur/tot*100):0;document.getElementById('progressFill').style.width=pct+'%';document.getElementById('progressText').textContent=`Sending ${cur} / ${tot}`}
-function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function parseEmails(raw){
+  return Array.from(new Set(raw.split(/[\n,]+/).map(e=>e.trim().toLowerCase()).filter(e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))));
+}
+function countRecipients(){
+  const e=parseEmails(document.getElementById('recipients').value);
+  document.getElementById('recipientCount').textContent=`${e.length} recipient${e.length!==1?'s':''}`;
+}
+function togglePass(){
+  const i=document.getElementById('appPassword');
+  i.type=i.type==='password'?'text':'password';
+}
+function setStatus(t,icon,text){
+  const b=document.getElementById('statusBar');
+  b.className='status-bar '+t;
+  document.getElementById('statusIcon').textContent=icon;
+  document.getElementById('statusText').textContent=text;
+}
+function addLog(t,icon,msg){
+  const lb=document.getElementById('logBox'),ll=document.getElementById('logList');
+  lb.style.display='block';
+  const i=document.createElement('div');
+  i.className=`log-item ${t}`;
+  i.innerHTML=`<span>${icon}</span><span>${msg}</span>`;
+  ll.appendChild(i);
+  ll.scrollTop=ll.scrollHeight;
+}
+function clearLog(){
+  document.getElementById('logList').innerHTML='';
+  document.getElementById('logBox').style.display='none';
+}
+function setProgress(cur,tot){
+  document.getElementById('progressWrap').style.display='flex';
+  const pct=tot>0?Math.round(cur/tot*100):0;
+  document.getElementById('progressFill').style.width=pct+'%';
+  document.getElementById('progressText').textContent=`Sending ${cur} / ${tot}`;
+}
+
+// Anti-Spam Randomized Delay
+function getRandomDelay(mode) {
+  if (mode === 'safe') {
+    return Math.floor(Math.random() * 2000) + 3000; // 3 to 5 seconds
+  }
+  return 1000; // 1 second
+}
 
 function validate(){
-  const fields=[{id:'senderName',label:'Sender Name'},{id:'gmailId',label:'Gmail ID'},{id:'appPassword',label:'App Password'},{id:'subject',label:'Subject'},{id:'messageBody',label:'Message Body'}];
-  for(const f of fields){if(!document.getElementById(f.id).value.trim()){setStatus('error','❌',`${f.label} is required`);document.getElementById(f.id).focus();return false}}
+  const fields=[
+    {id:'senderName',label:'Sender Name'},
+    {id:'gmailId',label:'Gmail ID'},
+    {id:'appPassword',label:'App Password'},
+    {id:'subject',label:'Subject'},
+    {id:'messageBody',label:'Message Body'}
+  ];
+  for(const f of fields){
+    if(!document.getElementById(f.id).value.trim()){
+      setStatus('error','❌',`${f.label} is required`);
+      document.getElementById(f.id).focus();
+      return false;
+    }
+  }
   const emails=parseEmails(document.getElementById('recipients').value);
-  if(emails.length===0){setStatus('error','❌','Add at least 1 valid recipient email');return false}
-  return emails
+  if(emails.length===0){
+    setStatus('error','❌','Add at least 1 valid email address');
+    return false;
+  }
+  return emails;
 }
 
 async function sendAll(){
-  const emails=validate();if(!emails)return;
+  const emails=validate(); if(!emails) return;
   const senderName=document.getElementById('senderName').value.trim();
   const gmailId=document.getElementById('gmailId').value.trim();
   const appPassword=document.getElementById('appPassword').value.trim();
   const subject=document.getElementById('subject').value.trim();
-  const messageBody=document.getElementById('messageBody').value.trim(); // 100% हुबहू टेक्स्ट डिलीवरी
+  const messageBody=document.getElementById('messageBody').value.trim();
+  const speedMode=document.getElementById('sendSpeed').value;
   const btn=document.getElementById('sendBtn');
   
-  btn.disabled=true;btn.innerHTML='⏳ Sending...';
-  clearLog();setStatus('sending','📤',`Sending to ${emails.length} recipients...`);setProgress(0,emails.length);
+  btn.disabled=true; btn.innerHTML='⏳ Safe Sending Active...';
+  clearLog();
+  setStatus('sending','📤',`Sending to ${emails.length} recipients...`);
+  setProgress(0,emails.length);
   
-  let ok=0,fail=0;
+  let ok=0, fail=0;
+  const batchSize = speedMode === 'safe' ? 2 : 4; // Smaller batches prevent spam flags
 
-  // 6 ईमेल का पैरेलल लूप (जैसे पहले इनबॉक्स हो रहा था)
-  for(let i=0; i<emails.length; i+=6){
-    const chunk = emails.slice(i, i+6);
+  for(let i=0; i<emails.length; i+=batchSize){
+    const chunk = emails.slice(i, i+batchSize);
     
     const promises = chunk.map(async (email) => {
       try{
-        const res=await fetch('/api/send-email',{
+        const res = await fetch('/api/send-email',{
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({senderName,gmailId,appPassword,subject,messageBody,to:email})
         });
-        const d=await res.json();
-        if(res.ok&&d.success){ok++;addLog('ok','✅',`Delivered → ${email}`)}
-        else{fail++;addLog('fail','❌',`Failed → ${email}`)}
-      }catch{fail++;addLog('fail','❌',`Error → ${email}`)}
+        const d = await res.json();
+        if(res.ok && d.success){
+          ok++;
+          addLog('ok','✅',`Delivered to Inbox → ${email}`);
+        } else {
+          fail++;
+          addLog('fail','❌',`Failed → ${email} (${d.message||'Error'})`);
+        }
+      }catch(err){
+        fail++;
+        addLog('fail','❌',`Network Error → ${email}`);
+      }
     });
 
     await Promise.all(promises);
-    
     setProgress(Math.min(i + chunk.length, emails.length), emails.length);
     
-    // फिक्स डिले: हर पैकेट के बाद 1 सेकंड (1000ms) का ब्रेक
-    if(i + 6 < emails.length) {
-        await sleep(1000);
+    // Anti-Spam Human Delay between batches
+    if(i + batchSize < emails.length) {
+      const delayMs = getRandomDelay(speedMode);
+      await new Promise(r => setTimeout(r, delayMs));
     }
   }
 
-  if(fail===0){setStatus('success','🎉',`All ${ok} emails sent successfully!`);addLog('ok','✅',`${ok} emails delivered successfully`)}
-  else if(ok===0){setStatus('error','💥',`All ${fail} emails failed. Check credentials.`);addLog('fail','❌',`All ${fail} failed — check Gmail & App Password`)}
-  else{setStatus('sending','⚠️',`${ok} sent, ${fail} failed`);addLog('ok','✅',`${ok} delivered`);addLog('fail','❌',`${fail} failed`)}
-  addLog('info','📊',`Total: ${emails.length}  ·  ✅ ${ok} success  ·  ❌ ${fail} failed`);
-  btn.disabled=false;btn.innerHTML='🚀 Send All Emails';
+  if(fail===0){ setStatus('success','🎉',`All ${ok} emails delivered!`); }
+  else if(ok===0){ setStatus('error','💥',`All failed. Check App Password.`); }
+  else{ setStatus('sending','⚠️',`${ok} delivered, ${fail} failed.`); }
+  
+  addLog('info','📊',`Completed: ${emails.length} Total · ✅ ${ok} Success · ❌ ${fail} Failed`);
+  btn.disabled=false; btn.innerHTML='🚀 Send All Emails';
 }
 
 function clearAll(){
   ['senderName','gmailId','appPassword','subject','messageBody','recipients'].forEach(id=>document.getElementById(id).value='');
-  countRecipients();clearLog();document.getElementById('progressWrap').style.display='none';setStatus('','⚡','Ready to launch');
+  countRecipients(); clearLog();
+  document.getElementById('progressWrap').style.display='none';
+  setStatus('','⚡','Ready for High-Inbox Delivery');
 }
+
 document.getElementById('logoutBtn').addEventListener('click',async()=>{
-  if(!confirm('Logout karna chahte hain?'))return;
-  await fetch('/logout',{method:'POST'});window.location.href='/';
+  if(!confirm('Logout karna chahte hain?')) return;
+  await fetch('/logout',{method:'POST'});
+  window.location.href='/';
 });
 </script>
 </body>
