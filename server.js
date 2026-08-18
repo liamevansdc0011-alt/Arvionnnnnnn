@@ -39,7 +39,25 @@ app.post("/api/auth", (req, res) => {
 });
 
 /* ==========================================================================
-   STREAMING MAIL SENDER ENDPOINT (Optimized Speed & Inbox Anti-Spam)
+   HTML TO PLAIN TEXT CONVERTER (Anti-Spam Fallback)
+   ========================================================================== */
+function convertToPlainText(html) {
+  if (!html) return "";
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\n\s*\n/g, '\n\n')
+    .trim();
+}
+
+/* ==========================================================================
+   STREAMING MAIL SENDER ENDPOINT
    ========================================================================== */
 app.post("/api/send-stream", async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -58,15 +76,13 @@ app.post("/api/send-stream", async (req, res) => {
   let transporter;
   try {
     transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
+      service: 'gmail',
       auth: {
         user: smtpUser.trim(),
         pass: smtpPass.trim()
       },
       pool: true,
-      maxConnections: 5,     // Speed boost: increased from 2 to 5 connections
+      maxConnections: 1, // Single connection pool to prevent socket throttle
       maxMessages: 100
     });
   } catch (err) {
@@ -75,12 +91,8 @@ app.post("/api/send-stream", async (req, res) => {
     return;
   }
 
-  const cleanSenderEmail = smtpUser.trim();
-  const domain = cleanSenderEmail.split('@')[1] || 'gmail.com';
+  const cleanSenderEmail = smtpUser.trim().toLowerCase();
   const formattedSender = senderName ? `"${senderName.trim()}" <${cleanSenderEmail}>` : cleanSenderEmail;
-
-  // HTML se plain-text extract karne ka helper (Inbox deliverability ke liye MIME multipart zaroori hai)
-  const plainText = messageBody.replace(/<[^>]*>?/gm, '');
 
   for (let index = 0; index < recipients.length; index++) {
     const recipient = recipients[index]?.trim();
@@ -89,25 +101,29 @@ app.post("/api/send-stream", async (req, res) => {
     res.write(': keep-alive\n\n');
 
     try {
-      // Unique RFC-compliant Message-ID generate karna taaki spam filter bypass ho
-      const randomHash = crypto.randomBytes(8).toString('hex');
-      const uniqueMessageId = `<${Date.now()}.${randomHash}@${domain}>`;
+      // Per-email Unique Reference Identifier (Footer Placement)
+      const refCode = crypto.randomBytes(3).toString('hex').toUpperCase();
+      const isHtml = /<[a-z][\s\S]*>/i.test(messageBody);
+
+      const htmlFooter = `<br><br><div style="font-size: 11px; color: #888888; font-family: sans-serif; border-top: 1px solid #eeeeee; padding-top: 8px;">Ref ID: #${refCode}</div>`;
+      const textFooter = `\n\n---\nRef ID: #${refCode}`;
 
       const mailOptions = {
         from: formattedSender,
         to: recipient,
         subject: subject,
-        text: plainText,          // Anti-Spam: Text + HTML multipart content
-        html: messageBody,
-        messageId: uniqueMessageId,
         headers: {
-          'X-Priority': '3',      // Normal priority (Spam filters high priority bulk emails ko flag karte hain)
-          'X-MSMail-Priority': 'Normal',
-          'Importance': 'Normal',
           'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`,
-          'Feedback-ID': `bulk-mail:${cleanSenderEmail}:${Date.now()}`
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
         }
       };
+
+      if (isHtml) {
+        mailOptions.html = messageBody + htmlFooter;
+        mailOptions.text = convertToPlainText(messageBody) + textFooter;
+      } else {
+        mailOptions.text = messageBody + textFooter;
+      }
 
       const info = await transporter.sendMail(mailOptions);
 
@@ -115,6 +131,7 @@ app.post("/api/send-stream", async (req, res) => {
         success: true,
         recipient,
         messageId: info.messageId,
+        refCode: refCode,
         progress: `${index + 1}/${recipients.length}`
       })}\n\n`);
 
@@ -127,12 +144,10 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
     }
 
-    // SPEED OPTIMIZATION:
-    // Delay ko 2000ms se ghata kar ~1200ms (1.2 sec) kar diya hai.
-    // Dynamic randomized delay spam filter pattern-matching ko confuse karta hai.
+    // Exact Controlled Delay: 1.0s - 1.4s Range (As Requested)
     if (index < recipients.length - 1) {
-      const safeDynamicDelay = Math.floor(Math.random() * 400) + 1000; // 1000ms - 1400ms range
-      await new Promise(resolve => setTimeout(resolve, safeDynamicDelay));
+      const dynamicDelay = Math.floor(Math.random() * 400) + 1000;
+      await new Promise(resolve => setTimeout(resolve, dynamicDelay));
     }
   }
 
