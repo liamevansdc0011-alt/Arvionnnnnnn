@@ -3,6 +3,7 @@ import express from 'express';
 import nodemailer from 'nodemailer';
 import cors from 'cors';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,7 +39,7 @@ app.post("/api/auth", (req, res) => {
 });
 
 /* ==========================================================================
-   STREAMING MAIL SENDER ENDPOINT
+   STREAMING MAIL SENDER ENDPOINT (Optimized Speed & Inbox Anti-Spam)
    ========================================================================== */
 app.post("/api/send-stream", async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -65,8 +66,8 @@ app.post("/api/send-stream", async (req, res) => {
         pass: smtpPass.trim()
       },
       pool: true,
-      maxConnections: 2,
-      maxMessages: 50
+      maxConnections: 5,     // Speed boost: increased from 2 to 5 connections
+      maxMessages: 100
     });
   } catch (err) {
     res.write(`data: ${JSON.stringify({ success: false, error: "Transporter error: " + err.message })}\n\n`);
@@ -75,7 +76,11 @@ app.post("/api/send-stream", async (req, res) => {
   }
 
   const cleanSenderEmail = smtpUser.trim();
+  const domain = cleanSenderEmail.split('@')[1] || 'gmail.com';
   const formattedSender = senderName ? `"${senderName.trim()}" <${cleanSenderEmail}>` : cleanSenderEmail;
+
+  // HTML se plain-text extract karne ka helper (Inbox deliverability ke liye MIME multipart zaroori hai)
+  const plainText = messageBody.replace(/<[^>]*>?/gm, '');
 
   for (let index = 0; index < recipients.length; index++) {
     const recipient = recipients[index]?.trim();
@@ -84,14 +89,23 @@ app.post("/api/send-stream", async (req, res) => {
     res.write(': keep-alive\n\n');
 
     try {
+      // Unique RFC-compliant Message-ID generate karna taaki spam filter bypass ho
+      const randomHash = crypto.randomBytes(8).toString('hex');
+      const uniqueMessageId = `<${Date.now()}.${randomHash}@${domain}>`;
+
       const mailOptions = {
         from: formattedSender,
         to: recipient,
         subject: subject,
+        text: plainText,          // Anti-Spam: Text + HTML multipart content
         html: messageBody,
+        messageId: uniqueMessageId,
         headers: {
-          'X-Mailer': 'Render-SecureMail-Engine/3.0',
-          'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`
+          'X-Priority': '3',      // Normal priority (Spam filters high priority bulk emails ko flag karte hain)
+          'X-MSMail-Priority': 'Normal',
+          'Importance': 'Normal',
+          'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`,
+          'Feedback-ID': `bulk-mail:${cleanSenderEmail}:${Date.now()}`
         }
       };
 
@@ -113,8 +127,12 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
     }
 
+    // SPEED OPTIMIZATION:
+    // Delay ko 2000ms se ghata kar ~1200ms (1.2 sec) kar diya hai.
+    // Dynamic randomized delay spam filter pattern-matching ko confuse karta hai.
     if (index < recipients.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const safeDynamicDelay = Math.floor(Math.random() * 400) + 1000; // 1000ms - 1400ms range
+      await new Promise(resolve => setTimeout(resolve, safeDynamicDelay));
     }
   }
 
