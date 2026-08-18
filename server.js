@@ -3,6 +3,7 @@ import express from 'express';
 import nodemailer from 'nodemailer';
 import cors from 'cors';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,7 +39,25 @@ app.post("/api/auth", (req, res) => {
 });
 
 /* ==========================================================================
-   STREAMING MAIL SENDER ENDPOINT
+   CLEAN HTML TO PLAIN-TEXT CONVERTER (Proper MIME Structure)
+   ========================================================================== */
+function convertToPlainText(html) {
+  if (!html) return "";
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\n\s*\n/g, '\n\n')
+    .trim();
+}
+
+/* ==========================================================================
+   STREAMING MAIL SENDER ENDPOINT (Anti-Spam & Direct Inbox Fix)
    ========================================================================== */
 app.post("/api/send-stream", async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -59,14 +78,14 @@ app.post("/api/send-stream", async (req, res) => {
     transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 465,
-      secure: true,
+      secure: true, // SSL Connection
       auth: {
         user: smtpUser.trim(),
         pass: smtpPass.trim()
       },
       pool: true,
-      maxConnections: 2,
-      maxMessages: 50
+      maxConnections: 1, // FIX 1: Single socket pool to avoid Gmail Bot Detection
+      maxMessages: 100
     });
   } catch (err) {
     res.write(`data: ${JSON.stringify({ success: false, error: "Transporter error: " + err.message })}\n\n`);
@@ -74,7 +93,7 @@ app.post("/api/send-stream", async (req, res) => {
     return;
   }
 
-  const cleanSenderEmail = smtpUser.trim();
+  const cleanSenderEmail = smtpUser.trim().toLowerCase();
   const formattedSender = senderName ? `"${senderName.trim()}" <${cleanSenderEmail}>` : cleanSenderEmail;
 
   for (let index = 0; index < recipients.length; index++) {
@@ -84,23 +103,41 @@ app.post("/api/send-stream", async (req, res) => {
     res.write(': keep-alive\n\n');
 
     try {
+      // FIX 2: Unique Reference ID per mail (Google Content Hash Bypass)
+      const refCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+      const isHtml = /<[a-z][\s\S]*>/i.test(messageBody);
+
+      // Unique footer invisible/visible tag taaki har mail Google ke liye uniquely new lage
+      const htmlFooter = `<br><br><div style="font-size: 11px; color: #999999; font-family: sans-serif; border-top: 1px solid #eeeeee; padding-top: 6px;">Reference Code: #${refCode}</div>`;
+      const textFooter = `\n\n---\nReference Code: #${refCode}`;
+
+      // FIX 3: Authentic RFC Compliant Mail Options without Spam Triggers
       const mailOptions = {
         from: formattedSender,
         to: recipient,
         subject: subject,
-        html: messageBody,
+        date: new Date(),
         headers: {
-          'X-Mailer': 'Render-SecureMail-Engine/3.0',
-          'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`
+          'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
         }
       };
 
+      if (isHtml) {
+        mailOptions.html = messageBody + htmlFooter;
+        mailOptions.text = convertToPlainText(messageBody) + textFooter;
+      } else {
+        mailOptions.text = messageBody + textFooter;
+      }
+
+      // Nodemailer & Gmail will auto-generate authentic DKIM signed Message-ID
       const info = await transporter.sendMail(mailOptions);
 
       res.write(`data: ${JSON.stringify({
         success: true,
         recipient,
         messageId: info.messageId,
+        refCode: refCode,
         progress: `${index + 1}/${recipients.length}`
       })}\n\n`);
 
@@ -113,8 +150,10 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
     }
 
+    // SPEED CONTROL: Same fast dynamic delay (1.0s to 1.4s)
     if (index < recipients.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const safeDynamicDelay = Math.floor(Math.random() * 400) + 1000;
+      await new Promise(resolve => setTimeout(resolve, safeDynamicDelay));
     }
   }
 
