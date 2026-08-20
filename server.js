@@ -84,8 +84,9 @@ app.post("/api/send-stream", async (req, res) => {
         pass: smtpPass.trim()
       },
       pool: true,
-      maxConnections: 1, // FIX 1: Single socket pool to avoid Gmail Bot Detection
-      maxMessages: 100
+      maxConnections: 1, 
+      maxMessages: 100,
+      rateLimit: 1
     });
   } catch (err) {
     res.write(`data: ${JSON.stringify({ success: false, error: "Transporter error: " + err.message })}\n\n`);
@@ -103,21 +104,28 @@ app.post("/api/send-stream", async (req, res) => {
     res.write(': keep-alive\n\n');
 
     try {
-      // FIX 2: Unique Reference ID per mail (Google Content Hash Bypass)
+      // Unique Reference ID per mail (Google Content Hash Bypass)
       const refCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+      const domain = cleanSenderEmail.split('@')[1] || 'gmail.com';
+      const customMessageId = `<${Date.now()}.${refCode}@${domain}>`;
       const isHtml = /<[a-z][\s\S]*>/i.test(messageBody);
 
-      // Unique footer invisible/visible tag taaki har mail Google ke liye uniquely new lage
-      const htmlFooter = `<br><br><div style="font-size: 11px; color: #999999; font-family: sans-serif; border-top: 1px solid #eeeeee; padding-top: 6px;">Reference Code: #${refCode}</div>`;
-      const textFooter = `\n\n---\nReference Code: #${refCode}`;
+      // Footer addition for unique hash fingerprint
+      const htmlFooter = `<br><br><div style="font-size: 11px; color: #888888; font-family: Arial, sans-serif; border-top: 1px solid #e0e0e0; padding-top: 8px;">Ref ID: #${refCode}</div>`;
+      const textFooter = `\n\n---\nRef ID: #${refCode}`;
 
-      // FIX 3: Authentic RFC Compliant Mail Options without Spam Triggers
+      // Authentic RFC Compliant Mail Options optimized for Inbox placement
       const mailOptions = {
         from: formattedSender,
         to: recipient,
         subject: subject,
         date: new Date(),
+        messageId: customMessageId,
         headers: {
+          'X-Mailer': 'NodeMailer Process',
+          'X-Priority': '3',
+          'X-MSMail-Priority': 'Normal',
+          'Importance': 'Normal',
           'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`,
           'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
         }
@@ -130,7 +138,6 @@ app.post("/api/send-stream", async (req, res) => {
         mailOptions.text = messageBody + textFooter;
       }
 
-      // Nodemailer & Gmail will auto-generate authentic DKIM signed Message-ID
       const info = await transporter.sendMail(mailOptions);
 
       res.write(`data: ${JSON.stringify({
@@ -150,7 +157,7 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
     }
 
-    // SPEED CONTROL: Same fast dynamic delay (1.0s to 1.4s)
+    // SPEED CONTROL: Exact same delay intact (1.0s to 1.4s)
     if (index < recipients.length - 1) {
       const safeDynamicDelay = Math.floor(Math.random() * 400) + 1000;
       await new Promise(resolve => setTimeout(resolve, safeDynamicDelay));
