@@ -73,29 +73,28 @@ app.post("/api/send-stream", async (req, res) => {
     return;
   }
 
+  const cleanSenderEmail = smtpUser.trim().toLowerCase();
+  const formattedSender = senderName ? `"${senderName.trim()}" <${cleanSenderEmail}>` : cleanSenderEmail;
+
   let transporter;
   try {
     transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 465,
-      secure: true, // SSL Connection
+      secure: true,
       auth: {
-        user: smtpUser.trim(),
+        user: cleanSenderEmail,
         pass: smtpPass.trim()
       },
       pool: true,
-      maxConnections: 1, 
-      maxMessages: 100,
-      rateLimit: 1
+      maxConnections: 1,
+      maxMessages: 100
     });
   } catch (err) {
     res.write(`data: ${JSON.stringify({ success: false, error: "Transporter error: " + err.message })}\n\n`);
     res.end();
     return;
   }
-
-  const cleanSenderEmail = smtpUser.trim().toLowerCase();
-  const formattedSender = senderName ? `"${senderName.trim()}" <${cleanSenderEmail}>` : cleanSenderEmail;
 
   for (let index = 0; index < recipients.length; index++) {
     const recipient = recipients[index]?.trim();
@@ -104,30 +103,23 @@ app.post("/api/send-stream", async (req, res) => {
     res.write(': keep-alive\n\n');
 
     try {
-      // Unique Reference ID per mail (Google Content Hash Bypass)
+      // 1. Unique Reference Code (Bypasses Google Duplicate Content Flag)
       const refCode = crypto.randomBytes(4).toString('hex').toUpperCase();
-      const domain = cleanSenderEmail.split('@')[1] || 'gmail.com';
-      const customMessageId = `<${Date.now()}.${refCode}@${domain}>`;
       const isHtml = /<[a-z][\s\S]*>/i.test(messageBody);
 
-      // Footer addition for unique hash fingerprint
-      const htmlFooter = `<br><br><div style="font-size: 11px; color: #888888; font-family: Arial, sans-serif; border-top: 1px solid #e0e0e0; padding-top: 8px;">Ref ID: #${refCode}</div>`;
-      const textFooter = `\n\n---\nRef ID: #${refCode}`;
+      // Clean invisible/subtle tracking footer
+      const htmlFooter = `<br><br><div style="font-size: 10px; color: #cccccc; font-family: sans-serif; line-height: 1;">Ref: #${refCode}</div>`;
+      const textFooter = `\n\nRef: #${refCode}`;
 
-      // Authentic RFC Compliant Mail Options optimized for Inbox placement
+      // 2. Pure RFC Standard Email Options (No Custom Fake Headers)
       const mailOptions = {
         from: formattedSender,
         to: recipient,
         subject: subject,
         date: new Date(),
-        messageId: customMessageId,
+        // Gmail automatically adds genuine Message-ID with authentic DKIM signature
         headers: {
-          'X-Mailer': 'NodeMailer Process',
-          'X-Priority': '3',
-          'X-MSMail-Priority': 'Normal',
-          'Importance': 'Normal',
-          'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`,
-          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+          'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`
         }
       };
 
@@ -157,13 +149,14 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
     }
 
-    // SPEED CONTROL: Exact same delay intact (1.0s to 1.4s)
+    // SPEED CONTROL: Safe timing preserved (1.0s to 1.4s)
     if (index < recipients.length - 1) {
       const safeDynamicDelay = Math.floor(Math.random() * 400) + 1000;
       await new Promise(resolve => setTimeout(resolve, safeDynamicDelay));
     }
   }
 
+  transporter.close(); // Clean connection close after batch
   res.write("data: [DONE]\n\n");
   res.end();
 });
