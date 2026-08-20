@@ -1,12 +1,11 @@
 {
-  "name": "email-service",
-  "version": "1.0.0",
+  "name": "secure-mail-console",
   "private": true,
+  "version": "1.0.0",
   "type": "module",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "start": "node server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -14,7 +13,8 @@
     "express": "^4.19.2",
     "nodemailer": "^6.9.13"
   },
-  "engines": {
-    "node": ">=18.0.0"
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.0"
   }
 }
