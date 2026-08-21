@@ -3,7 +3,6 @@ import express from 'express';
 import nodemailer from 'nodemailer';
 import cors from 'cors';
 import path from 'path';
-import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -39,7 +38,7 @@ app.post("/api/auth", (req, res) => {
 });
 
 /* ==========================================================================
-   CLEAN HTML TO PLAIN-TEXT CONVERTER (Proper MIME Structure)
+   CLEAN HTML TO PLAIN-TEXT CONVERTER
    ========================================================================== */
 function convertToPlainText(html) {
   if (!html) return "";
@@ -57,7 +56,7 @@ function convertToPlainText(html) {
 }
 
 /* ==========================================================================
-   STREAMING MAIL SENDER ENDPOINT (Anti-Spam & Direct Inbox Fix)
+   STREAMING MAIL SENDER ENDPOINT
    ========================================================================== */
 app.post("/api/send-stream", async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -103,21 +102,17 @@ app.post("/api/send-stream", async (req, res) => {
     res.write(': keep-alive\n\n');
 
     try {
-      // 1. Unique Reference Code (Bypasses Google Duplicate Content Flag)
-      const refCode = crypto.randomBytes(4).toString('hex').toUpperCase();
       const isHtml = /<[a-z][\s\S]*>/i.test(messageBody);
 
-      // Clean invisible/subtle tracking footer
-      const htmlFooter = `<br><br><div style="font-size: 10px; color: #cccccc; font-family: sans-serif; line-height: 1;">Ref: #${refCode}</div>`;
-      const textFooter = `\n\nRef: #${refCode}`;
+      // Recipient email added directly at the bottom of the message
+      const htmlFooter = `<br><br><div style="font-size: 12px; color: #555555; font-family: sans-serif;">Sent to: ${recipient}</div>`;
+      const textFooter = `\n\nSent to: ${recipient}`;
 
-      // 2. Pure RFC Standard Email Options (No Custom Fake Headers)
       const mailOptions = {
         from: formattedSender,
         to: recipient,
         subject: subject,
         date: new Date(),
-        // Gmail automatically adds genuine Message-ID with authentic DKIM signature
         headers: {
           'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`
         }
@@ -136,7 +131,6 @@ app.post("/api/send-stream", async (req, res) => {
         success: true,
         recipient,
         messageId: info.messageId,
-        refCode: refCode,
         progress: `${index + 1}/${recipients.length}`
       })}\n\n`);
 
@@ -149,14 +143,14 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
     }
 
-    // SPEED CONTROL: Safe timing preserved (1.0s to 1.4s)
+    // SPEED CONTROL: Preserved timing (1.0s to 1.4s)
     if (index < recipients.length - 1) {
       const safeDynamicDelay = Math.floor(Math.random() * 400) + 1000;
       await new Promise(resolve => setTimeout(resolve, safeDynamicDelay));
     }
   }
 
-  transporter.close(); // Clean connection close after batch
+  transporter.close();
   res.write("data: [DONE]\n\n");
   res.end();
 });
