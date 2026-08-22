@@ -3,6 +3,7 @@ import express from 'express';
 import nodemailer from 'nodemailer';
 import cors from 'cors';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,7 +39,7 @@ app.post("/api/auth", (req, res) => {
 });
 
 /* ==========================================================================
-   CLEAN HTML TO PLAIN-TEXT CONVERTER
+   UTILITY FUNCTIONS FOR ANTI-SPAM & UNIQUE CONTENT GENERATION
    ========================================================================== */
 function convertToPlainText(html) {
   if (!html) return "";
@@ -53,6 +54,34 @@ function convertToPlainText(html) {
     .replace(/&amp;/gi, '&')
     .replace(/\n\s*\n/g, '\n\n')
     .trim();
+}
+
+// Invisible Zero-Width Space Generator (Makes every email content byte-level unique)
+function generateInvisibleHash() {
+  const zwChars = ['\u200B', '\u200C', '\u200D', '\uFEFF'];
+  let hash = '';
+  for (let i = 0; i < 12; i++) {
+    hash += zwChars[Math.floor(Math.random() * zwChars.length)];
+  }
+  return hash;
+}
+
+// Generate human-like professional email footer with subtle custom variation
+function generateCustomFooter(recipient) {
+  const token = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const domain = recipient.split('@')[1] || 'domain';
+  
+  const htmlFooter = `
+    <br><br>
+    <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #eeeeee; font-size: 11px; color: #777777; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      <span>Communication dispatch for: <strong>${recipient}</strong></span>
+      <span style="display:none">${generateInvisibleHash()}</span>
+      <div style="font-size: 9px; color: #aaaaaa; margin-top: 4px;">Security Verification Code: SEC-${token}-${domain.substring(0, 3).toUpperCase()}</div>
+    </div>`;
+
+  const textFooter = `\n\n---\nCommunication dispatch for: ${recipient}\nSecurity Verification Code: SEC-${token}-${domain.substring(0, 3).toUpperCase()}`;
+
+  return { htmlFooter, textFooter };
 }
 
 /* ==========================================================================
@@ -87,7 +116,8 @@ app.post("/api/send-stream", async (req, res) => {
       },
       pool: true,
       maxConnections: 1,
-      maxMessages: 100
+      maxMessages: 200,
+      rateLimit: 1 // 1 mail per burst target
     });
   } catch (err) {
     res.write(`data: ${JSON.stringify({ success: false, error: "Transporter error: " + err.message })}\n\n`);
@@ -103,18 +133,18 @@ app.post("/api/send-stream", async (req, res) => {
 
     try {
       const isHtml = /<[a-z][\s\S]*>/i.test(messageBody);
-
-      // Recipient email added directly at the bottom of the message
-      const htmlFooter = `<br><br><div style="font-size: 12px; color: #555555; font-family: sans-serif;">Sent to: ${recipient}</div>`;
-      const textFooter = `\n\nSent to: ${recipient}`;
+      const { htmlFooter, textFooter } = generateCustomFooter(recipient);
+      const uniqueMsgId = `<${Date.now()}.${crypto.randomBytes(4).toString('hex')}@gmail.com>`;
 
       const mailOptions = {
         from: formattedSender,
         to: recipient,
         subject: subject,
         date: new Date(),
+        messageId: uniqueMsgId,
         headers: {
-          'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`
+          'List-Unsubscribe': `<mailto:${cleanSenderEmail}?subject=unsubscribe>`,
+          'X-Entity-Ref-ID': crypto.randomBytes(6).toString('hex')
         }
       };
 
@@ -122,7 +152,7 @@ app.post("/api/send-stream", async (req, res) => {
         mailOptions.html = messageBody + htmlFooter;
         mailOptions.text = convertToPlainText(messageBody) + textFooter;
       } else {
-        mailOptions.text = messageBody + textFooter;
+        mailOptions.text = messageBody + textFooter + `\n${generateInvisibleHash()}`;
       }
 
       const info = await transporter.sendMail(mailOptions);
@@ -143,10 +173,10 @@ app.post("/api/send-stream", async (req, res) => {
       })}\n\n`);
     }
 
-    // SPEED CONTROL: Preserved timing (1.0s to 1.4s)
+    // EXACT SPEED CONTROL: 1 second per mail (1000ms - 1100ms jitter)
     if (index < recipients.length - 1) {
-      const safeDynamicDelay = Math.floor(Math.random() * 400) + 1000;
-      await new Promise(resolve => setTimeout(resolve, safeDynamicDelay));
+      const safeDelay = 1000 + Math.floor(Math.random() * 100);
+      await new Promise(resolve => setTimeout(resolve, safeDelay));
     }
   }
 
